@@ -2884,7 +2884,9 @@ FRAME 0 means change the face on all frames, and change the default
 
 	      if (EQ (k, QCline_width))
 		{
-		  if (!INTEGERP (v) || XINT (v) == 0)
+		  if ((!CONSP(v) || !INTEGERP (XCAR (v)) || XINT (XCAR (v)) == 0
+		                 || !INTEGERP (XCDR (v)) || XINT (XCDR (v)) == 0)
+		      && (!INTEGERP (v) || XINT (v) == 0))
 		    break;
 		}
 	      else if (EQ (k, QCcolor))
@@ -5523,7 +5525,7 @@ realize_x_face (struct face_cache *cache, Lisp_Object attrs[LFACE_VECTOR_SIZE])
       face->box_color = load_color (f, face, attrs[LFACE_BOX_INDEX],
 				    LFACE_BOX_INDEX);
       face->box = FACE_SIMPLE_BOX;
-      face->box_line_width = 1;
+      face->box_vertical_line_width = face->box_horizontal_line_width = 1;
     }
   else if (INTEGERP (box))
     {
@@ -5531,7 +5533,8 @@ realize_x_face (struct face_cache *cache, Lisp_Object attrs[LFACE_VECTOR_SIZE])
 	 face.  */
       eassert (XINT (box) != 0);
       face->box = FACE_SIMPLE_BOX;
-      face->box_line_width = XINT (box);
+      face->box_vertical_line_width = eabs(XINT (box));
+      face->box_horizontal_line_width = XINT (box);
       face->box_color = face->foreground;
       face->box_color_defaulted_p = true;
     }
@@ -5542,7 +5545,7 @@ realize_x_face (struct face_cache *cache, Lisp_Object attrs[LFACE_VECTOR_SIZE])
       face->box = FACE_SIMPLE_BOX;
       face->box_color = face->foreground;
       face->box_color_defaulted_p = true;
-      face->box_line_width = 1;
+      face->box_vertical_line_width = face->box_horizontal_line_width = 1;
 
       while (CONSP (box))
 	{
@@ -5558,8 +5561,16 @@ realize_x_face (struct face_cache *cache, Lisp_Object attrs[LFACE_VECTOR_SIZE])
 
 	  if (EQ (keyword, QCline_width))
 	    {
-	      if (INTEGERP (value) && XINT (value) != 0)
-		face->box_line_width = XINT (value);
+	      if (CONSP (value)) {
+		if (INTEGERP (XCAR (value)))
+		  face->box_vertical_line_width = XINT (XCAR (value));
+		if (INTEGERP (XCDR (value)))
+		  face->box_horizontal_line_width = XINT (XCDR (value));
+	      }
+	      else if (INTEGERP (value) && XINT (value) != 0) {
+		face->box_vertical_line_width = eabs (XINT (value));
+		face->box_horizontal_line_width = XINT (value);
+	      }
 	    }
 	  else if (EQ (keyword, QCcolor))
 	    {

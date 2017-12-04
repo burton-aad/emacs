@@ -1620,12 +1620,16 @@ struct face
   int fontset;
 
   /* Non-zero means characters in this face have a box of that
-     thickness around them.  If this value is negative, its absolute
-     value indicates the thickness, and the horizontal (top and
-     bottom) borders of box are drawn inside of the character glyphs'
-     area.  The vertical (left and right) borders of the box are drawn
-     in the same way as when this value is positive.  */
-  int box_line_width;
+     thickness around them. Vertical (left and right) and horizontal
+     (top and bottom) borders size can be set separatedly using an
+     associated list of two ints in the form
+     (vertical_size . horizontal_size). In case one of the value is
+     negative, its absolute value indicates the thickness, and the
+     borders of box are drawn inside of the character glyphs' area.
+     If int is use and its value is negative, it is the same as setting
+     (N . -N) value with N being the absolute value set. */
+  int box_vertical_line_width;
+  int box_horizontal_line_width;
 
   /* Type of box drawn.  A value of FACE_NO_BOX means no box is drawn
      around text in this face.  A value of FACE_SIMPLE_BOX means a box
