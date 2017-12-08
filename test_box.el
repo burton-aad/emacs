@@ -12,6 +12,8 @@
 (test_box_around_text '(4 . -4))
 (test_box_around_text '(-4 . 4))
 (test_box_around_text '(-4 . -4))
+(test_box_around_text '(-1 . -1))
 
-(test_box_around_text '(4 . 0))
-(test_box_around_text '(0 . 4))
+(test_box_around_text '(1 . 1))
+(test_box_around_text '(4 . 1))
+(test_box_around_text '(1 . 4))

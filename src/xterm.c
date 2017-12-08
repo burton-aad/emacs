@@ -2951,7 +2951,7 @@ x_draw_glyph_string_box (struct glyph_string *s)
 		? s->first_glyph
 		: s->first_glyph + s->nchars - 1);
 
-  width = max (s->face->box_vertical_line_width, 0);
+  width = eabs (s->face->box_vertical_line_width);
   raised_p = s->face->box == FACE_RAISED_BOX;
   left_x = s->x;
   right_x = (s->row->full_width_p && s->extends_to_end_of_line_p
