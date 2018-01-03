@@ -964,7 +964,7 @@ static void w32_draw_relief_rect (struct frame *, int, int, int, int,
                                   int, int, int, int, int, int,
                                   RECT *);
 static void w32_draw_box_rect (struct glyph_string *, int, int, int, int,
-                               int, bool, bool, RECT *);
+                               int, int, bool, bool, RECT *);
 
 
 /* Set S->gc to a suitable GC for drawing glyph string S in cursor
@@ -1762,31 +1762,31 @@ w32_draw_relief_rect (struct frame *f,
 
 static void
 w32_draw_box_rect (struct glyph_string *s,
-		   int left_x, int top_y, int right_x, int bottom_y, int width,
-                   bool left_p, bool right_p, RECT *clip_rect)
+		   int left_x, int top_y, int right_x, int bottom_y, int hwidth,
+		   int vwidth, bool left_p, bool right_p, RECT *clip_rect)
 {
   w32_set_clip_rectangle (s->hdc, clip_rect);
 
   /* Top.  */
   w32_fill_area (s->f, s->hdc, s->face->box_color,
-		  left_x, top_y, right_x - left_x + 1, width);
+		  left_x, top_y, right_x - left_x + 1, hwidth);
 
   /* Left.  */
   if (left_p)
     {
       w32_fill_area (s->f, s->hdc, s->face->box_color,
-                     left_x, top_y, width, bottom_y - top_y + 1);
+                     left_x, top_y, vwidth, bottom_y - top_y + 1);
     }
 
   /* Bottom.  */
   w32_fill_area (s->f, s->hdc, s->face->box_color,
-                 left_x, bottom_y - width + 1, right_x - left_x + 1, width);
+                 left_x, bottom_y - hwidth + 1, right_x - left_x + 1, hwidth);
 
   /* Right.  */
   if (right_p)
     {
       w32_fill_area (s->f, s->hdc, s->face->box_color,
-                     right_x - width + 1, top_y, width, bottom_y - top_y + 1);
+                     right_x - vwidth + 1, top_y, vwidth, bottom_y - top_y + 1);
     }
 
   w32_set_clip_rectangle (s->hdc, NULL);
@@ -1833,8 +1833,8 @@ x_draw_glyph_string_box (struct glyph_string *s)
   get_glyph_string_clip_rect (s, &clip_rect);
 
   if (s->face->box == FACE_SIMPLE_BOX)
-    w32_draw_box_rect (s, left_x, top_y, right_x, bottom_y, width,
-                       left_p, right_p, &clip_rect);
+    w32_draw_box_rect (s, left_x, top_y, right_x, bottom_y, eabs (s->face->box_horizontal_line_width),
+                       width, left_p, right_p, &clip_rect);
   else
     {
       x_setup_relief_colors (s);
