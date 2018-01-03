@@ -1536,7 +1536,7 @@ static void x_draw_relief_rect (struct frame *, int, int, int, int,
                                 int, bool, bool, bool, bool, bool,
                                 XRectangle *);
 static void x_draw_box_rect (struct glyph_string *, int, int, int, int,
-                             int, bool, bool, XRectangle *);
+                             int, int, bool, bool, XRectangle *);
 static void x_scroll_bar_clear (struct frame *);
 
 #ifdef GLYPH_DEBUG
@@ -2900,8 +2900,8 @@ x_draw_relief_rect (struct frame *f,
 
 static void
 x_draw_box_rect (struct glyph_string *s,
-		 int left_x, int top_y, int right_x, int bottom_y, int width,
-		 bool left_p, bool right_p, XRectangle *clip_rect)
+		 int left_x, int top_y, int right_x, int bottom_y, int hwidth,
+		 int vwidth, bool left_p, bool right_p, XRectangle *clip_rect)
 {
   XGCValues xgcv;
 
@@ -2911,21 +2911,21 @@ x_draw_box_rect (struct glyph_string *s,
 
   /* Top.  */
   x_fill_rectangle (s->f, s->gc,
-		  left_x, top_y, right_x - left_x + 1, width);
+		  left_x, top_y, right_x - left_x + 1, hwidth);
 
   /* Left.  */
   if (left_p)
     x_fill_rectangle (s->f, s->gc,
-		    left_x, top_y, width, bottom_y - top_y + 1);
+		    left_x, top_y, vwidth, bottom_y - top_y + 1);
 
   /* Bottom.  */
   x_fill_rectangle (s->f, s->gc,
-		  left_x, bottom_y - width + 1, right_x - left_x + 1, width);
+		  left_x, bottom_y - hwidth + 1, right_x - left_x + 1, hwidth);
 
   /* Right.  */
   if (right_p)
     x_fill_rectangle (s->f, s->gc,
-		    right_x - width + 1, top_y, width, bottom_y - top_y + 1);
+		    right_x - vwidth + 1, top_y, vwidth, bottom_y - top_y + 1);
 
   XSetForeground (s->display, s->gc, xgcv.foreground);
   x_reset_clip_rectangles (s->f, s->gc);
@@ -2972,8 +2972,8 @@ x_draw_glyph_string_box (struct glyph_string *s)
   get_glyph_string_clip_rect (s, &clip_rect);
 
   if (s->face->box == FACE_SIMPLE_BOX)
-    x_draw_box_rect (s, left_x, top_y, right_x, bottom_y, width,
-		     left_p, right_p, &clip_rect);
+    x_draw_box_rect (s, left_x, top_y, right_x, bottom_y, eabs (s->face->box_horizontal_line_width),
+		     width, left_p, right_p, &clip_rect);
   else
     {
       x_setup_relief_colors (s);
