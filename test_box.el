@@ -23,3 +23,12 @@
 (test_box_around_text '(1 . 4))
 (test_box_around_text '(-4 . 1))
 (test_box_around_text '(1 . -4))
+
+(defun test_image_relief ()
+  (save-excursion
+    (goto-char (point-min))
+    (insert-image
+     (create-image
+      "splash.svg" nil nil :relief 12))))
+
+(test_image_relief)

@@ -1533,7 +1533,7 @@ static void x_draw_image_foreground_1 (struct glyph_string *, Pixmap);
 static void x_clear_glyph_string_rect (struct glyph_string *, int,
                                        int, int, int);
 static void x_draw_relief_rect (struct frame *, int, int, int, int,
-                                int, bool, bool, bool, bool, bool,
+                                int, int, bool, bool, bool, bool, bool,
                                 XRectangle *);
 static void x_draw_box_rect (struct glyph_string *, int, int, int, int,
                              int, int, bool, bool, XRectangle *);
@@ -2720,7 +2720,7 @@ x_setup_relief_colors (struct glyph_string *s)
 static void
 x_draw_relief_rect (struct frame *f,
 		    int left_x, int top_y, int right_x, int bottom_y,
-		    int width, bool raised_p, bool top_p, bool bot_p,
+		    int hwidth, int vwidth, bool raised_p, bool top_p, bool bot_p,
 		    bool left_p, bool right_p,
 		    XRectangle *clip_rect)
 {
@@ -2745,7 +2745,7 @@ x_draw_relief_rect (struct frame *f,
   if (left_p)
     {
       x_fill_rectangle (f, top_left_gc, left_x, top_y,
-			width, bottom_y + 1 - top_y);
+			vwidth, bottom_y + 1 - top_y);
       if (top_p)
 	corners |= 1 << CORNER_TOP_LEFT;
       if (bot_p)
@@ -2753,8 +2753,8 @@ x_draw_relief_rect (struct frame *f,
     }
   if (right_p)
     {
-      x_fill_rectangle (f, bottom_right_gc, right_x + 1 - width, top_y,
-			width, bottom_y + 1 - top_y);
+      x_fill_rectangle (f, bottom_right_gc, right_x + 1 - vwidth, top_y,
+			vwidth, bottom_y + 1 - top_y);
       if (top_p)
 	corners |= 1 << CORNER_TOP_RIGHT;
       if (bot_p)
@@ -2764,25 +2764,25 @@ x_draw_relief_rect (struct frame *f,
     {
       if (!right_p)
 	x_fill_rectangle (f, top_left_gc, left_x, top_y,
-			  right_x + 1 - left_x, width);
+			  right_x + 1 - left_x, hwidth);
       else
 	x_fill_trapezoid_for_relief (f, top_left_gc, left_x, top_y,
-				     right_x + 1 - left_x, width, 1);
+				     right_x + 1 - left_x, hwidth, 1);
     }
   if (bot_p)
     {
       if (!left_p)
-	x_fill_rectangle (f, bottom_right_gc, left_x, bottom_y + 1 - width,
-			  right_x + 1 - left_x, width);
+	x_fill_rectangle (f, bottom_right_gc, left_x, bottom_y + 1 - hwidth,
+			  right_x + 1 - left_x, hwidth);
       else
 	x_fill_trapezoid_for_relief (f, bottom_right_gc,
-				     left_x, bottom_y + 1 - width,
-				     right_x + 1 - left_x, width, 0);
+				     left_x, bottom_y + 1 - hwidth,
+				     right_x + 1 - left_x, hwidth, 0);
     }
-  if (left_p && width != 1)
+  if (left_p && vwidth != 1)
     x_fill_rectangle (f, bottom_right_gc, left_x, top_y,
 		      1, bottom_y + 1 - top_y);
-  if (top_p && width != 1)
+  if (top_p && hwidth != 1)
     x_fill_rectangle (f, bottom_right_gc, left_x, top_y,
 		      right_x + 1 - left_x, 1);
   if (corners)
@@ -2816,12 +2816,12 @@ x_draw_relief_rect (struct frame *f,
   /* Top.  */
   if (top_p)
     {
-      if (width == 1)
+      if (hwidth == 1)
         XDrawLine (dpy, drawable, gc,
 		   left_x + left_p, top_y,
 		   right_x + !right_p, top_y);
 
-      for (i = 1; i < width; ++i)
+      for (i = 1; i < hwidth; ++i)
         XDrawLine (dpy, drawable, gc,
 		   left_x  + i * left_p, top_y + i,
 		   right_x + 1 - i * right_p, top_y + i);
@@ -2830,13 +2830,13 @@ x_draw_relief_rect (struct frame *f,
   /* Left.  */
   if (left_p)
     {
-      if (width == 1)
+      if (vwidth == 1)
         XDrawLine (dpy, drawable, gc, left_x, top_y + 1, left_x, bottom_y);
 
       x_clear_area(f, left_x, top_y, 1, 1);
       x_clear_area(f, left_x, bottom_y, 1, 1);
 
-      for (i = (width > 1 ? 1 : 0); i < width; ++i)
+      for (i = (vwidth > 1 ? 1 : 0); i < vwidth; ++i)
         XDrawLine (dpy, drawable, gc,
 		   left_x + i, top_y + (i + 1) * top_p,
 		   left_x + i, bottom_y + 1 - (i + 1) * bot_p);
@@ -2849,18 +2849,15 @@ x_draw_relief_rect (struct frame *f,
     gc = f->output_data.x->white_relief.gc;
   XSetClipRectangles (dpy, gc, 0, 0, clip_rect, 1, Unsorted);
 
-  if (width > 1)
-    {
-      /* Outermost top line.  */
-      if (top_p)
-        XDrawLine (dpy, drawable, gc,
-		   left_x  + left_p, top_y,
-		   right_x + !right_p, top_y);
+  /* Outermost top line.  */
+  if (top_p && hwidth > 1)
+    XDrawLine (dpy, drawable, gc,
+	       left_x  + left_p, top_y,
+	       right_x + !right_p, top_y);
 
-      /* Outermost left line.  */
-      if (left_p)
-        XDrawLine (dpy, drawable, gc, left_x, top_y + 1, left_x, bottom_y);
-    }
+  /* Outermost left line.  */
+  if (left_p && vwidth > 1)
+    XDrawLine (dpy, drawable, gc, left_x, top_y + 1, left_x, bottom_y);
 
   /* Bottom.  */
   if (bot_p)
@@ -2868,7 +2865,7 @@ x_draw_relief_rect (struct frame *f,
       XDrawLine (dpy, drawable, gc,
 		 left_x + left_p, bottom_y,
 		 right_x + !right_p, bottom_y);
-      for (i = 1; i < width; ++i)
+      for (i = 1; i < hwidth; ++i)
         XDrawLine (dpy, drawable, gc,
 		   left_x  + i * left_p, bottom_y - i,
 		   right_x + 1 - i * right_p, bottom_y - i);
@@ -2879,7 +2876,7 @@ x_draw_relief_rect (struct frame *f,
     {
       x_clear_area(f, right_x, top_y, 1, 1);
       x_clear_area(f, right_x, bottom_y, 1, 1);
-      for (i = 0; i < width; ++i)
+      for (i = 0; i < vwidth; ++i)
         XDrawLine (dpy, drawable, gc,
 		   right_x - i, top_y + (i + 1) * top_p,
 		   right_x - i, bottom_y + 1 - (i + 1) * bot_p);
@@ -2978,6 +2975,7 @@ x_draw_glyph_string_box (struct glyph_string *s)
     {
       x_setup_relief_colors (s);
       x_draw_relief_rect (s->f, left_x, top_y, right_x, bottom_y,
+			  eabs (s->face->box_horizontal_line_width),
 			  width, raised_p, true, true, left_p, right_p,
 			  &clip_rect);
     }
@@ -3143,7 +3141,7 @@ x_draw_image_relief (struct glyph_string *s)
 
   x_setup_relief_colors (s);
   get_glyph_string_clip_rect (s, &r);
-  x_draw_relief_rect (s->f, x, y, x1, y1, thick, raised_p,
+  x_draw_relief_rect (s->f, x, y, x1, y1, thick, thick, raised_p,
 		      top_p, bot_p, left_p, right_p, &r);
 }
 
