@@ -1,10 +1,12 @@
 
+
+
 (defun test_box_around_text (s)
   (save-excursion
     (goto-char (point-min))
     (insert "ABCDE\nABCDE\nABCDE\n")
     ;; (put-text-property 8 11 'font-lock-face `(:box (:line-width ,s :color "red")))
-    (put-text-property 8 11 'font-lock-face `(:box (:line-width ,s :color "red" :style released-button)))
+    (put-text-property 8 11 'font-lock-face `(:box (:line-width ,s :color "white" :style released-button)))
     ))
 
 (test_box_around_text 0)

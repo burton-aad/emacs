@@ -961,7 +961,7 @@ static void w32_draw_image_foreground_1 (struct glyph_string *, HBITMAP);
 static void x_clear_glyph_string_rect (struct glyph_string *, int,
                                        int, int, int);
 static void w32_draw_relief_rect (struct frame *, int, int, int, int,
-                                  int, int, int, int, int, int,
+                                  int, int, int, int, int, int, int,
                                   RECT *);
 static void w32_draw_box_rect (struct glyph_string *, int, int, int, int,
                                int, int, bool, bool, RECT *);
@@ -1699,7 +1699,7 @@ x_setup_relief_colors (struct glyph_string *s)
 static void
 w32_draw_relief_rect (struct frame *f,
 		      int left_x, int top_y, int right_x, int bottom_y,
-		      int width, int raised_p,
+		      int hwidth, int vwidth, int raised_p,
 		      int top_p, int bot_p, int left_p, int right_p,
 		      RECT *clip_rect)
 {
@@ -1716,14 +1716,14 @@ w32_draw_relief_rect (struct frame *f,
 
   /* Top.  */
   if (top_p)
-    for (i = 0; i < width; ++i)
+    for (i = 0; i < hwidth; ++i)
       w32_fill_area (f, hdc, gc.foreground,
 		     left_x + i * left_p, top_y + i,
 		     right_x - left_x - i * (left_p + right_p ) + 1, 1);
 
   /* Left.  */
   if (left_p)
-    for (i = 0; i < width; ++i)
+    for (i = 0; i < vwidth; ++i)
       w32_fill_area (f, hdc, gc.foreground,
 		     left_x + i, top_y + (i + 1) * top_p, 1,
 		     bottom_y - top_y - (i + 1) * (bot_p + top_p) + 1);
@@ -1735,14 +1735,14 @@ w32_draw_relief_rect (struct frame *f,
 
   /* Bottom.  */
   if (bot_p)
-    for (i = 0; i < width; ++i)
+    for (i = 0; i < hwidth; ++i)
       w32_fill_area (f, hdc, gc.foreground,
 		     left_x + i * left_p, bottom_y - i,
 		     right_x - left_x - i * (left_p + right_p) + 1, 1);
 
   /* Right.  */
   if (right_p)
-    for (i = 0; i < width; ++i)
+    for (i = 0; i < vwidth; ++i)
       w32_fill_area (f, hdc, gc.foreground,
 		     right_x - i, top_y + (i + 1) * top_p, 1,
 		     bottom_y - top_y - (i + 1) * (bot_p + top_p) + 1);
@@ -1839,6 +1839,7 @@ x_draw_glyph_string_box (struct glyph_string *s)
     {
       x_setup_relief_colors (s);
       w32_draw_relief_rect (s->f, left_x, top_y, right_x, bottom_y,
+                            eabs (s->face->box_horizontal_line_width),
                             width, raised_p, 1, 1, left_p, right_p, &clip_rect);
     }
 }
@@ -2002,7 +2003,7 @@ x_draw_image_relief (struct glyph_string *s)
 
   x_setup_relief_colors (s);
   get_glyph_string_clip_rect (s, &r);
-  w32_draw_relief_rect (s->f, x, y, x1, y1, thick, raised_p,
+  w32_draw_relief_rect (s->f, x, y, x1, y1, thick, thick, raised_p,
 			top_p, bot_p, left_p, right_p, &r);
 }
 
