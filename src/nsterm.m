@@ -3563,7 +3563,7 @@ ns_dumpglyphs_box_or_relief (struct glyph_string *s)
   else
     face = s->face;
 
-  thickness = face->box_line_width;
+  thickness = face->box_vertical_line_width;
 
   NSTRACE ("ns_dumpglyphs_box_or_relief");
 
@@ -3611,7 +3611,7 @@ ns_maybe_dumpglyphs_background (struct glyph_string *s, char force_p)
 
   if (!s->background_filled_p/* || s->hl == DRAW_MOUSE_FACE*/)
     {
-      int box_line_width = max (s->face->box_line_width, 0);
+      int box_line_width = max (s->face->box_horizontal_line_width, 0);
       if (FONT_HEIGHT (s->font) < s->height - 2 * box_line_width
 	  /* When xdisp.c ignores FONT_HEIGHT, we cannot trust font
 	     dimensions, since the actual glyphs might be much
@@ -3662,7 +3662,7 @@ ns_dumpglyphs_image (struct glyph_string *s, NSRect r)
    -------------------------------------------------------------------------- */
 {
   EmacsImage *img = s->img->pixmap;
-  int box_line_vwidth = max (s->face->box_line_width, 0);
+  int box_line_vwidth = max (s->face->box_horizontal_line_width, 0);
   int x = s->x, y = s->ybase - image_ascent (s->img, s->face, &s->slice);
   int bg_x, bg_y, bg_height;
   int th;
@@ -3675,7 +3675,7 @@ ns_dumpglyphs_image (struct glyph_string *s, NSRect r)
 
   if (s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p && s->slice.x == 0)
-    x += abs (s->face->box_line_width);
+    x += abs (s->face->box_vertical_line_width);
 
   bg_x = x;
   bg_y =  s->slice.y == 0 ? s->y : s->y + box_line_vwidth;
@@ -3898,7 +3898,7 @@ ns_draw_glyph_string_foreground (struct glyph_string *s)
      of S to the right of that box line.  */
   if (s->face && s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p)
-    x = s->x + eabs (s->face->box_line_width);
+    x = s->x + eabs (s->face->box_vertical_line_width);
   else
     x = s->x;
 
@@ -3924,7 +3924,7 @@ ns_draw_composite_glyph_string_foreground (struct glyph_string *s)
      of S to the right of that box line.  */
   if (s->face && s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p)
-    x = s->x + eabs (s->face->box_line_width);
+    x = s->x + eabs (s->face->box_vertical_line_width);
   else
     x = s->x;
 
