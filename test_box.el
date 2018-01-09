@@ -1,6 +1,5 @@
 
 
-
 (defun test_box_around_text (s)
   (save-excursion
     (goto-char (point-min))
@@ -18,8 +17,8 @@
 (test_box_around_text '(-4 . -4))
 (test_box_around_text '(-1 . -1))
 
-(test_box_around_text '(1 . 0))
-(test_box_around_text '(0 . 1))
+(test_box_around_text '(4 . 0))
+(test_box_around_text '(0 . 4))
 (test_box_around_text '(1 . 1))
 (test_box_around_text '(4 . 1))
 (test_box_around_text '(1 . 4))

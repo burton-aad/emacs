@@ -2779,10 +2779,10 @@ x_draw_relief_rect (struct frame *f,
 				     left_x, bottom_y + 1 - hwidth,
 				     right_x + 1 - left_x, hwidth, 0);
     }
-  if (left_p && vwidth != 1)
+  if (left_p && vwidth > 1)
     x_fill_rectangle (f, bottom_right_gc, left_x, top_y,
 		      1, bottom_y + 1 - top_y);
-  if (top_p && hwidth != 1)
+  if (top_p && hwidth > 1)
     x_fill_rectangle (f, bottom_right_gc, left_x, top_y,
 		      right_x + 1 - left_x, 1);
   if (corners)
@@ -2833,10 +2833,7 @@ x_draw_relief_rect (struct frame *f,
       if (vwidth == 1)
         XDrawLine (dpy, drawable, gc, left_x, top_y + 1, left_x, bottom_y);
 
-      x_clear_area(f, left_x, top_y, 1, 1);
-      x_clear_area(f, left_x, bottom_y, 1, 1);
-
-      for (i = (vwidth > 1 ? 1 : 0); i < vwidth; ++i)
+      for (i = 1; i < vwidth; ++i)
         XDrawLine (dpy, drawable, gc,
 		   left_x + i, top_y + (i + 1) * top_p,
 		   left_x + i, bottom_y + 1 - (i + 1) * bot_p);
@@ -2862,9 +2859,11 @@ x_draw_relief_rect (struct frame *f,
   /* Bottom.  */
   if (bot_p)
     {
-      XDrawLine (dpy, drawable, gc,
-		 left_x + left_p, bottom_y,
-		 right_x + !right_p, bottom_y);
+      if (hwidth >= 1)
+        XDrawLine (dpy, drawable, gc,
+		   left_x + left_p, bottom_y,
+		   right_x + !right_p, bottom_y);
+
       for (i = 1; i < hwidth; ++i)
         XDrawLine (dpy, drawable, gc,
 		   left_x  + i * left_p, bottom_y - i,
@@ -2874,8 +2873,6 @@ x_draw_relief_rect (struct frame *f,
   /* Right.  */
   if (right_p)
     {
-      x_clear_area(f, right_x, top_y, 1, 1);
-      x_clear_area(f, right_x, bottom_y, 1, 1);
       for (i = 0; i < vwidth; ++i)
         XDrawLine (dpy, drawable, gc,
 		   right_x - i, top_y + (i + 1) * top_p,
