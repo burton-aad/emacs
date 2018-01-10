@@ -1625,9 +1625,10 @@ struct face
      associated list of two ints in the form
      (vertical_size . horizontal_size). In case one of the value is
      negative, its absolute value indicates the thickness, and the
-     borders of box are drawn inside of the character glyphs' area.
-     If int is use and its value is negative, it is the same as setting
-     (N . -N) value with N being the absolute value set. */
+     borders of box are drawn inside of the character glyphs' area
+     potentially over the glyph itself but the glyph drawing size is
+     not increase. If a (signed) int N is use instead of a list, it
+     is the same as setting ( abs(N) . N ) values. */
   int box_vertical_line_width;
   int box_horizontal_line_width;
 
