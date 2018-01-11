@@ -3675,7 +3675,7 @@ ns_dumpglyphs_image (struct glyph_string *s, NSRect r)
 
   if (s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p && s->slice.x == 0)
-    x += abs (s->face->box_vertical_line_width);
+    x += max (s->face->box_vertical_line_width, 0);
 
   bg_x = x;
   bg_y =  s->slice.y == 0 ? s->y : s->y + box_line_vwidth;
@@ -3898,7 +3898,7 @@ ns_draw_glyph_string_foreground (struct glyph_string *s)
      of S to the right of that box line.  */
   if (s->face && s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p)
-    x = s->x + eabs (s->face->box_vertical_line_width);
+    x = s->x + max (s->face->box_vertical_line_width, 0);
   else
     x = s->x;
 
@@ -3924,7 +3924,7 @@ ns_draw_composite_glyph_string_foreground (struct glyph_string *s)
      of S to the right of that box line.  */
   if (s->face && s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p)
-    x = s->x + eabs (s->face->box_vertical_line_width);
+    x = s->x + max (s->face->box_vertical_line_width, 0);
   else
     x = s->x;
 
