@@ -3431,8 +3431,8 @@ ns_draw_text_decoration (struct glyph_string *s, struct face *face,
 }
 
 static void
-ns_draw_box (NSRect r, CGFloat thickness, NSColor *col,
-             char left_p, char right_p)
+ns_draw_box (NSRect r, CGFloat vthickness, CGFloat hthickness,
+             NSColor *col, char left_p, char right_p)
 /* --------------------------------------------------------------------------
     Draw an unfilled rect inside r, optionally leaving left and/or right open.
     Note we can't just use an NSDrawRect command, because of the possibility
@@ -3443,21 +3443,21 @@ ns_draw_box (NSRect r, CGFloat thickness, NSColor *col,
   [col set];
 
   /* top, bottom */
-  s.size.height = thickness;
+  s.size.height = hthickness;
   NSRectFill (s);
-  s.origin.y += r.size.height - thickness;
+  s.origin.y += r.size.height - hthickness;
   NSRectFill (s);
 
   s.size.height = r.size.height;
   s.origin.y = r.origin.y;
 
   /* left, right (optional) */
-  s.size.width = thickness;
+  s.size.width = vthickness;
   if (left_p)
     NSRectFill (s);
   if (right_p)
     {
-      s.origin.x += r.size.width - thickness;
+      s.origin.x += r.size.width - vthickness;
       NSRectFill (s);
     }
 }
@@ -3588,9 +3588,9 @@ ns_dumpglyphs_box_or_relief (struct glyph_string *s)
   /* TODO: Sometimes box_color is 0 and this seems wrong; should investigate. */
   if (s->face->box == FACE_SIMPLE_BOX && s->face->box_color)
     {
-      ns_draw_box (r, abs (thickness),
+      ns_draw_box (r, abs (thickness), abs (face->box_horizontal_line_width),
                    ns_lookup_indexed_color (face->box_color, s->f),
-                  left_p, right_p);
+                   left_p, right_p);
     }
   else
     {
@@ -3788,7 +3788,7 @@ ns_dumpglyphs_image (struct glyph_string *s, NSRect r)
     {
       int thickness = abs (s->img->relief);
       if (thickness == 0) thickness = 1;
-      ns_draw_box (br, thickness, FRAME_CURSOR_COLOR (s->f), 1, 1);
+      ns_draw_box (br, thickness, thickness, FRAME_CURSOR_COLOR (s->f), 1, 1);
     }
 }
 
@@ -3940,7 +3940,7 @@ ns_draw_composite_glyph_string_foreground (struct glyph_string *s)
       if (s->cmp_from == 0)
         {
           NSRect r = NSMakeRect (s->x, s->y, s->width-1, s->height -1);
-          ns_draw_box (r, 1, FRAME_CURSOR_COLOR (s->f), 1, 1);
+          ns_draw_box (r, 1, 1, FRAME_CURSOR_COLOR (s->f), 1, 1);
         }
     }
   else if (! s->first_glyph->u.cmp.automatic)
