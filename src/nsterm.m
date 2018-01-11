@@ -3464,7 +3464,7 @@ ns_draw_box (NSRect r, CGFloat vthickness, CGFloat hthickness,
 
 
 static void
-ns_draw_relief (NSRect r, int thickness, char raised_p,
+ns_draw_relief (NSRect r, int vthickness, int hthickness, char raised_p,
                char top_p, char bottom_p, char left_p, char right_p,
                struct glyph_string *s)
 /* --------------------------------------------------------------------------
@@ -3514,27 +3514,27 @@ ns_draw_relief (NSRect r, int thickness, char raised_p,
   /* TODO: mitering. Using NSBezierPath doesn't work because of color switch. */
 
   /* top */
-  sr.size.height = thickness;
+  sr.size.height = hthickness;
   if (top_p) NSRectFill (sr);
 
   /* left */
   sr.size.height = r.size.height;
-  sr.size.width = thickness;
+  sr.size.width = vthickness;
   if (left_p) NSRectFill (sr);
 
   [(raised_p ? darkCol : lightCol) set];
 
   /* bottom */
   sr.size.width = r.size.width;
-  sr.size.height = thickness;
-  sr.origin.y += r.size.height - thickness;
+  sr.size.height = hthickness;
+  sr.origin.y += r.size.height - hthickness;
   if (bottom_p) NSRectFill (sr);
 
   /* right */
   sr.size.height = r.size.height;
   sr.origin.y = r.origin.y;
-  sr.size.width = thickness;
-  sr.origin.x += r.size.width - thickness;
+  sr.size.width = vthickness;
+  sr.origin.x += r.size.width - vthickness;
   if (right_p) NSRectFill (sr);
 }
 
@@ -3594,8 +3594,9 @@ ns_dumpglyphs_box_or_relief (struct glyph_string *s)
     }
   else
     {
-      ns_draw_relief (r, abs (thickness), s->face->box == FACE_RAISED_BOX,
-                     1, 1, left_p, right_p, s);
+      ns_draw_relief (r, abs (thickness), abs (face->box_horizontal_line_width),
+		      s->face->box == FACE_RAISED_BOX,
+		      1, 1, left_p, right_p, s);
     }
 }
 
@@ -3774,7 +3775,7 @@ ns_dumpglyphs_image (struct glyph_string *s, NSRect r)
       r.origin.y = y - th;
       r.size.width = s->slice.width + 2*th-1;
       r.size.height = s->slice.height + 2*th-1;
-      ns_draw_relief (r, th, raised_p,
+      ns_draw_relief (r, th, th, raised_p,
                       s->slice.y == 0,
                       s->slice.y + s->slice.height == s->img->height,
                       s->slice.x == 0,
