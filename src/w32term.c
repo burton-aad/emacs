@@ -1285,7 +1285,7 @@ x_draw_glyph_string_foreground (struct glyph_string *s)
      of S to the right of that box line.  */
   if (s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p)
-      x = s->x + max (s->face->box_vertical_line_width, 0);
+    x = s->x + max (s->face->box_vertical_line_width, 0);
   else
     x = s->x;
 
@@ -1343,7 +1343,7 @@ x_draw_composite_glyph_string_foreground (struct glyph_string *s)
      of S to the right of that box line.  */
   if (s->face && s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p)
-      x = s->x + max (s->face->box_vertical_line_width, 0);
+    x = s->x + max (s->face->box_vertical_line_width, 0);
   else
     x = s->x;
 
@@ -1440,7 +1440,7 @@ x_draw_glyphless_glyph_string_foreground (struct glyph_string *s)
      of S to the right of that box line.  */
   if (s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p)
-      x = s->x + max (s->face->box_vertical_line_width, 0);
+    x = s->x + max (s->face->box_vertical_line_width, 0);
   else
     x = s->x;
 
@@ -1858,7 +1858,7 @@ x_draw_image_foreground (struct glyph_string *s)
   if (s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p
       && s->slice.x == 0)
-      x += max (s->face->box_vertical_line_width, 0);
+    x += max (s->face->box_vertical_line_width, 0);
 
   /* If there is a margin around the image, adjust x- and y-position
      by that margin.  */
@@ -1951,7 +1951,7 @@ x_draw_image_relief (struct glyph_string *s)
   if (s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p
       && s->slice.x == 0)
-      x += max (s->face->box_vertical_line_width, 0);
+    x += max (s->face->box_vertical_line_width, 0);
 
   /* If there is a margin around the image, adjust x- and y-position
      by that margin.  */
@@ -2023,7 +2023,7 @@ w32_draw_image_foreground_1 (struct glyph_string *s, HBITMAP pixmap)
   if (s->face->box != FACE_NO_BOX
       && s->first_glyph->left_box_line_p
       && s->slice.x == 0)
-      x += max (s->face->box_vertical_line_width, 0);
+    x += max (s->face->box_vertical_line_width, 0);
 
   /* If there is a margin around the image, adjust x- and y-position
      by that margin.  */
