@@ -1128,10 +1128,10 @@ nsfont_draw (struct glyph_string *s, int from, int to, int x, int y,
         }
       else
         {
-          // Review this
-          int correction = abs (s->face->box_vertical_line_width)+1;
+          int correction = abs (s->face->box_horizontal_line_width)+1;
           br.origin.y += correction;
           br.size.height -= 2*correction;
+          correction = abs (s->face->box_vertical_line_width)+1;
           br.origin.x += correction;
           br.size.width -= 2*correction;
         }
