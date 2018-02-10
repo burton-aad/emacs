@@ -19,10 +19,12 @@
           (overlay-put hexl-ascii-overlay 'face 'hexm-ascii-overlay-face)
         (overlay-put hexl-ascii-overlay 'face 'highlight)))))
 
-
 (defun hexm-enable-mode (enable)
   "Enable/Disable hexm mode base on ENABLE arg. Positive enable, other disable."
-  (hexm-toggle-ascii-overlay-face enable))
+  (hexm-toggle-ascii-overlay-face enable)
+  (if (> enable 0)
+      (advice-add 'hexl-follow-ascii :after 'hexm-toggle-ascii-overlay-face)
+    (advice-remove 'hexl-follow-ascii 'hexm-toggle-ascii-overlay-face)))
 
 ;;;###autoload
 (define-minor-mode hexm-mode
