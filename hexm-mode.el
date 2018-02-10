@@ -19,6 +19,16 @@
           (overlay-put hexl-ascii-overlay 'face 'hexm-ascii-overlay-face)
         (overlay-put hexl-ascii-overlay 'face 'highlight)))))
 
+(defun hexm-address-to-ascii-marker (address)
+  "Return buffer ascii position for ADDRESS."
+  (interactive "nAddress: ")
+  (+ (* (/ address 16) (hexl-line-displen)) ; hexl line no * display length
+     (hexl-ascii-start-column) ; offset to the ascii part
+     (point-min)               ; base offset (point usually starts at 1, not 0)
+     (% address 16)))          ; char offset into ascii display line
+
+
+
 (defun hexm-enable-mode (enable)
   "Enable/Disable hexm mode base on ENABLE arg. Positive enable, other disable."
   (hexm-toggle-ascii-overlay-face enable)
