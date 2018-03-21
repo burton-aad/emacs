@@ -163,13 +163,17 @@
 
 (defun terminal-init-rxvt ()
   "Terminal initialization function for rxvt."
+  (message "init rxvt...")
 
   (xterm--push-map rxvt-alternatives-map local-function-key-map)
   (xterm--push-map rxvt-function-map input-decode-map)
 
   ;; Initialize colors and background mode.
   (xterm-register-default-colors rxvt-standard-colors)
-  (rxvt-set-background-mode)
+  (or (rxvt-set-background-mode)
+      (let ((xterm-query-timeout nil))
+        (xterm--query "\e]11;?\e\\"
+                      '(("\e]11;" .  xterm--report-background-handler)) t)))
   ;; This recomputes all the default faces given the colors we've just set up.
   (tty-set-up-initial-frame-faces))
 

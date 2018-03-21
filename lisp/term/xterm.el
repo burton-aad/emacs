@@ -639,8 +639,15 @@ Return the pasted text as a string."
   (let ((str "")
         chr)
     ;; The reply should be: \e ] 11 ; rgb: NUMBER1 / NUMBER2 / NUMBER3 \e \\
-    (while (and (setq chr (read-event nil nil 2)) (not (equal chr ?\\)))
-      (setq str (concat str (string chr))))
+    (let ((i 0))
+      (while (and (setq chr (read-event nil nil 1)) (not (equal chr ?\\)))
+        (message (format "xterm-report evt %d : %c" i chr))
+        (setq str (concat str (string chr)))
+        (setq i (1+ i)))
+      (if (not (null chr))
+          (message (format "xterm-report end evt %d : %c" i chr))
+        (message (format "xterm-report end evt %d : nil" i))))
+    (message (format "test string : %s" str))
     (when (string-match
            "rgb:\\([a-f0-9]+\\)/\\([a-f0-9]+\\)/\\([a-f0-9]+\\)" str)
       (let ((recompute-faces
@@ -758,7 +765,8 @@ We run the first FUNCTION whose STRING matches the input events."
                               nil)
                           (or (eq evt (aref (car handler) i))
                               (progn (if evt (push evt unread-command-events))
-                                     nil)))))
+                                     nil)))
+                        (message (format "xterm-query evt %d : %c" i evt))))
             (setq i (1+ i)))
           (if (= i (length (car handler)))
               (progn (setq handlers nil)
