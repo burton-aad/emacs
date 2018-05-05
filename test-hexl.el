@@ -1,4 +1,6 @@
 
+(require 'hexl)
+(load-file "./hexm-mode.el")
 
 
 (mapconcat (lambda (c) (regexp-quote (string c))) "pqr"
@@ -11,10 +13,13 @@
 (overlay-get 'hexl-ascii-overlay 'face)
 
 (custom-set-faces
- `(hexm-ascii-overlay-face ((t (:box (:line-width -3 :color ,(face-background 'cursor)))))))
+ `(hexm-ascii-overlay-face ((t (:box (:line-width -1 :color ,(face-background 'cursor)))))))
 
 (custom-set-faces
  `(hexm-ascii-overlay-face ((t (:box (:line-width (-1 . -1) :color ,(face-background 'cursor)))))))
+
+(custom-set-faces
+ `(hexm-ascii-overlay-face ((t (:inherit highlight)))))
 
 
 (defun hexm-follow-ascii (&optional arg)

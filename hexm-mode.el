@@ -21,6 +21,18 @@
           (overlay-put hexl-ascii-overlay 'face 'hexm-ascii-overlay-face)
         (overlay-put hexl-ascii-overlay 'face 'highlight)))))
 
+(defun hexm-follow-overlay-find ()
+  "Find and highlight the ASCII/Hex element corresponding to current point.
+The overlay position depend on the hexm-hex-ascii-mode"
+  (let ((pos (+ (- (point) (current-column))
+                (if hexm-hex-ascii-mode
+                    (let ((N (* (% (hexl-current-address) 16) 2)))
+                      (+ 10 (+ N (/ N (/ hexl-bits 4)))))
+                  (+ (hexl-ascii-start-column)
+                     (mod (hexl-current-address) 16))))))
+    (move-overlay hexl-ascii-overlay pos (1+ pos))
+    ))
+
 (defun hexm-address-to-ascii-marker (address)
   "Return buffer ascii position for ADDRESS."
   (interactive "nAddress: ")
@@ -58,9 +70,11 @@
   (if (> enable 0)
       (progn
         (advice-add 'hexl-follow-ascii :after 'hexm-toggle-ascii-overlay-face)
-        (advice-add 'hexl-address-to-marker :override 'hexm-address-advice))
+        (advice-add 'hexl-address-to-marker :override 'hexm-address-advice)
+        (advice-add 'hexl-follow-ascii-find :override 'hexm-follow-overlay-find))
     (advice-remove 'hexl-follow-ascii 'hexm-toggle-ascii-overlay-face)
-    (advice-remove 'hexl-address-to-marker 'hexm-address-advice)))
+    (advice-remove 'hexl-address-to-marker 'hexm-address-advice)
+    (advice-remove 'hexl-follow-ascii-find 'hexm-follow-overlay-find)))
 
 ;;;###autoload
 (define-minor-mode hexm-mode
@@ -82,8 +96,3 @@ List of functionality:
     (hexm-enable-mode 0)))
 
 (provide 'hexm-mode)
-
-
-;; test
-(custom-set-faces
- `(hexm-ascii-overlay-face ((t (:box (:line-width -3 :color ,(face-background 'cursor)))))))
