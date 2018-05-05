@@ -71,9 +71,11 @@ The overlay position depend on the hexm-hex-ascii-mode"
   (hexm-toggle-ascii-overlay-face enable)
   (if (> enable 0)
       (progn
+        (define-key hexl-mode-map (kbd "TAB") 'hexm-switch-mode)
         (advice-add 'hexl-follow-ascii :after 'hexm-toggle-ascii-overlay-face)
         (advice-add 'hexl-address-to-marker :override 'hexm-address-advice)
         (advice-add 'hexl-follow-ascii-find :override 'hexm-follow-overlay-find))
+    (define-key hexl-mode-map (kbd "TAB") 'undefined)
     (advice-remove 'hexl-follow-ascii 'hexm-toggle-ascii-overlay-face)
     (advice-remove 'hexl-address-to-marker 'hexm-address-advice)
     (advice-remove 'hexl-follow-ascii-find 'hexm-follow-overlay-find)))
@@ -88,9 +90,6 @@ List of functionality:
 - Allow to change to face of the ascii overlay with the hexm-ascii-overlay-face."
   :lighter " hexM"
   :group 'hexm
-  :keymap (let ((map hexl-mode-map))
-            (define-key map (kbd "TAB") 'hexm-switch-mode)
-            map)
 
   (message (format "hexm mode %S" hexm-mode))
   (if hexm-mode
