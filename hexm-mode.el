@@ -1,3 +1,4 @@
+;;; hexm-mode.el --- change some hexl behavior -*- lexical-binding: t -*-
 
 ;;; Code:
 
@@ -12,6 +13,7 @@
 
 (defvar hexm-hex-ascii-mode nil
   "Define the hex mode : hexadecimal mode if nil, ascii mode otherwise")
+(make-variable-buffer-local 'hexm-hex-ascii-mode)
 
 (defun hexm-toggle-ascii-overlay-face (&optional arg)
   "Set the hexl-ascii-overlay face to the specific hexm defined face. Reset it if ARG is negative"
