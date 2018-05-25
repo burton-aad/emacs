@@ -203,6 +203,7 @@
     (while (not res)
       (let ((tok (smie-default-backward-token)))
         (cond
+         ((= (point) (point-min)) (setq res ":"))
          ((zerop (length tok))
           (let ((forward-sexp-function nil))
             (condition-case nil
