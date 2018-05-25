@@ -199,16 +199,22 @@
     )))
 
 (defun m2-smie-refine-colon ()
+  (message "TOTOOTT")
   (let ((res nil))
     (while (not res)
       (let ((tok (smie-default-backward-token)))
+        (message (format "in loop : tok = '%s' (%d)" tok (length tok)))
         (cond
          ((= (point) (point-min)) (setq res ":"))
          ((zerop (length tok))
+          (message "TATATATA")
           (let ((forward-sexp-function nil))
-            (condition-case nil
+            (condition-case toto
                 (forward-sexp -1)
-              (scan-error (setq res ":")))))
+              (scan-error (setq res ":"))
+              (t (progn
+                   (message (format "toto: %S" toto))
+                   (setq res ":"))))))
          ((member tok '("|" "OF" "..")) (setq res ":-case"))
          ((member tok '(":" "END" ";" "BEGIN" "VAR" "RECORD" "PROCEDURE"))
           (setq res ":")))))
