@@ -1,6 +1,6 @@
 ;;; rst.el --- Mode for viewing and editing reStructuredText-documents  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2003-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2018 Free Software Foundation, Inc.
 
 ;; Maintainer: Stefan Merten <stefan at merten-home dot de>
 ;; Author: Stefan Merten <stefan at merten-home dot de>,
@@ -631,7 +631,7 @@ After interpretation of ARGS the results are concatenated as for
      &aux
      (char (rst-Ado--validate-char char-arg))
      (-style 'simple)))
-   ;; Construct a over-and-under section header.
+   ;; Construct an over-and-under section header.
    (:constructor
     rst-Ado-new-over-and-under
     (char-arg
@@ -696,7 +696,7 @@ Return CHAR if so or signal an error otherwise."
 
 (defun rst-Ado-is-over-and-under (self)
   ;; testcover: ok.
-  "Return non-nil if SELF is a over-and-under section adornment."
+  "Return non-nil if SELF is an over-and-under section adornment."
   (cl-check-type self rst-Ado)
   (eq (rst-Ado--style self) 'over-and-under))
 
@@ -796,6 +796,9 @@ Return ADO if so or signal an error otherwise."
 
 ;; Public class methods
 
+(define-obsolete-variable-alias
+  'rst-preferred-decorations 'rst-preferred-adornments "rst 1.0.0")
+
 (defvar rst-preferred-adornments) ; Forward declaration.
 
 (defun rst-Hdr-preferred-adornments ()
@@ -834,7 +837,7 @@ Return ADO if so or signal an error otherwise."
 
 (defun rst-Hdr-is-over-and-under (self)
   ;; testcover: ok.
-  "Return non-nil if SELF is a over-and-under section header."
+  "Return non-nil if SELF is an over-and-under section header."
   (cl-check-type self rst-Hdr)
   (rst-Ado-is-over-and-under (rst-Hdr-ado self)))
 
@@ -937,7 +940,7 @@ This type is immutable."
 		   (or (null und-beg) (integer-or-marker-p und-beg))
 		   (or (null und-end) (integer-or-marker-p und-end)))
 	(signal 'args-out-of-range
-		'("For a over-and-under section adornment all match pairs must be set."))))))
+		'("For an over-and-under section adornment all match pairs must be set."))))))
   match)
 
 (defun rst-Ttl--validate-indent (indent ado)
@@ -1224,7 +1227,7 @@ as well but give an additional message."
     ;; Makes paragraphs in region as a bullet list.
     (rst-define-key map [?\C-c ?\C-l ?\C-b] #'rst-bullet-list-region
 		    [?\C-c ?\C-b])
-    ;; Makes paragraphs in region as a enumeration.
+    ;; Makes paragraphs in region an enumeration.
     (rst-define-key map [?\C-c ?\C-l ?\C-e] #'rst-enumerate-region
 		    [?\C-c ?\C-e])
     ;; Converts bullets to an enumeration.
@@ -1408,9 +1411,6 @@ highlighting.
 ;;;###autoload
 (define-minor-mode rst-minor-mode
   "Toggle ReST minor mode.
-With a prefix argument ARG, enable ReST minor mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 When ReST minor mode is enabled, the ReST mode keybindings
 are installed on top of the major mode bindings.  Use this
@@ -1481,8 +1481,6 @@ for modes derived from Text mode, like Mail mode."
   :group 'rst
   :version "21.1")
 
-(define-obsolete-variable-alias
-  'rst-preferred-decorations 'rst-preferred-adornments "rst 1.0.0")
 ;; FIXME: Default must match suggestion in
 ;;        http://sphinx-doc.org/rest.html#sections for Python documentation.
 (defcustom rst-preferred-adornments '((?= over-and-under 1)
@@ -1529,7 +1527,7 @@ file."
 (defcustom rst-default-indent 1
   "Number of characters to indent the section title.
 This is only used while toggling adornment styles when switching
-from a simple adornment style to a over-and-under adornment
+from a simple adornment style to an over-and-under adornment
 style.  In addition this is used in cases where the adornments
 found in the buffer are to be used but the indentation for
 over-and-under adornments is inconsistent across the buffer."

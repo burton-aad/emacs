@@ -1,6 +1,6 @@
 ;;; artist.el --- draw ascii graphics with your mouse
 
-;; Copyright (C) 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2018 Free Software Foundation, Inc.
 
 ;; Author:       Tomas Abrahamsson <tab@lysator.liu.se>
 ;; Maintainer:   Tomas Abrahamsson <tab@lysator.liu.se>
@@ -351,13 +351,12 @@ Example:
 (defvar artist-pointer-shape (if (eq window-system 'x) x-pointer-crosshair nil)
   "If in X Windows, use this pointer shape while drawing with the mouse.")
 
+(defvaralias 'artist-text-renderer 'artist-text-renderer-function)
 
 (defcustom artist-text-renderer-function 'artist-figlet
   "Function for doing text rendering."
   :group 'artist-text
   :type 'symbol)
-(defvaralias 'artist-text-renderer 'artist-text-renderer-function)
-
 
 (defcustom artist-figlet-program "figlet"
   "Program to run for `figlet'."
@@ -1025,78 +1024,78 @@ If DRAW-HOW is `artist-do-poly':
 
 (defsubst artist-go-get-keyword (info-variant-part)
   "Retrieve the keyword component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 0))
 
 (defsubst artist-go-get-symbol (info-variant-part)
   "Retrieve the symbol component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 1))
 
 (defsubst artist-go-get-mode-line (info-variant-part)
   "Retrieve the mode line component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 2))
 
 (defsubst artist-go-get-arrow-pred (info-variant-part)
   "Retrieve the arrow predicate component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 3))
 
 (defsubst artist-go-get-arrow-set-fn (info-variant-part)
   "Retrieve the arrow set component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 4))
 
 (defsubst artist-go-get-init-fn (info-variant-part)
   "Retrieve the init function component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 5))
 
 (defsubst artist-go-get-prep-fill-fn (info-variant-part)
   "Retrieve the fill preparation function component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 6))
 
 (defsubst artist-go-get-exit-fn (info-variant-part)
   "Retrieve the exit component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 7))
 
 (defsubst artist-go-get-draw-how (info-variant-part)
   "Retrieve the draw how component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 8))
 
 (defsubst artist-go-get-draw-fn (info-variant-part)
   "Retrieve the draw function component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part."
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part."
   (elt info-variant-part 9))
 
 (defsubst artist-go-get-undraw-fn (info-variant-part)
   "Retrieve the undraw function component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part.
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part.
 This interval function component is available only if the `draw-how'
 component is other than `artist-do-continously' or 1."
   (elt (elt info-variant-part 10) 0))
 
 (defsubst artist-go-get-interval-fn (info-variant-part)
   "Retrieve the interval function component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part.
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part.
 This interval function component is available only if the `draw-how'
 component is `artist-do-continously'."
   (elt (elt info-variant-part 10) 0))
 
 (defsubst artist-go-get-fill-pred (info-variant-part)
   "Retrieve the fill predicate component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part.
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part.
 This interval function component is available only if the `draw-how'
 component is other than `artist-do-continously' or 1."
   (elt (elt info-variant-part 10) 1))
 
 (defsubst artist-go-get-fill-fn (info-variant-part)
   "Retrieve the fill function component from an INFO-VARIANT-PART.
-An INFO-VARIANT-PART is the shifted or unshifted info from a info-part.
+An INFO-VARIANT-PART is the shifted or unshifted info from an info-part.
 This interval function component is available only if the `draw-how'
 component is other than `artist-do-continously' or 1."
   (elt (elt info-variant-part 10) 2))
@@ -1199,7 +1198,7 @@ PREV-OP-ARG are used when invoked recursively during the build-up."
 ;;;###autoload
 (define-minor-mode artist-mode
   "Toggle Artist mode.
-With argument ARG, turn Artist mode on if ARG is positive.
+
 Artist lets you draw lines, squares, rectangles and poly-lines,
 ellipses and circles with your mouse and/or keyboard.
 
@@ -1401,7 +1400,10 @@ Keymap summary
 	 (artist-mode-exit))
 	(t
 	 ;; Turn mode on
-	 (artist-mode-init))))
+	 (artist-mode-init)
+         (let ((font (face-attribute 'default :font)))
+           (when (and (fontp font) (not (font-get font :spacing)))
+             (message "The default font isn't monospaced, so the drawings in this buffer may look odd"))))))
 
 ;; Init and exit
 (defun artist-mode-init ()

@@ -1,6 +1,6 @@
 @c -*- mode: texinfo; coding: utf-8 -*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998-1999, 2001-2017 Free Software
+@c Copyright (C) 1990-1995, 1998-1999, 2001-2018 Free Software
 @c Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node Lisp Data Types
@@ -109,15 +109,15 @@ not be evaluated later.  @xref{Input Functions}, for a description of
 @node Comments
 @section Comments
 @cindex comments
-@cindex @samp{;} in comment
+@cindex @samp{;} for commenting
 
-  A @dfn{comment} is text that is written in a program only for the sake
-of humans that read the program, and that has no effect on the meaning
-of the program.  In Lisp, a semicolon (@samp{;}) starts a comment if it
-is not within a string or character constant.  The comment continues to
-the end of line.  The Lisp reader discards comments; they do not become
-part of the Lisp objects which represent the program within the Lisp
-system.
+  A @dfn{comment} is text that is written in a program only for the
+sake of humans that read the program, and that has no effect on the
+meaning of the program.  In Lisp, an unescaped semicolon (@samp{;})
+starts a comment if it is not within a string or character constant.
+The comment continues to the end of line.  The Lisp reader discards
+comments; they do not become part of the Lisp objects which represent
+the program within the Lisp system.
 
   The @samp{#@@@var{count}} construct, which skips the next @var{count}
 characters, is useful for program-generated comments containing binary
@@ -2083,6 +2083,10 @@ strings), two arguments with the same contents or elements are not
 necessarily @code{eq} to each other: they are @code{eq} only if they
 are the same object, meaning that a change in the contents of one will
 be reflected by the same change in the contents of the other.
+For other types of objects whose contents cannot be changed (e.g.,
+floats), two arguments with the same contents might or might not be
+the same object, and @code{eq} returns @code{t} or @code{nil}
+depending on whether the Lisp interpreter created one object or two.
 
 @example
 @group
@@ -2093,6 +2097,12 @@ be reflected by the same change in the contents of the other.
 @group
 (eq 456 456)
      @result{} t
+@end group
+
+@group
+(eq 3.0 3.0)
+     @result{} t @r{or} nil
+;; @r{The result is implementation-dependent.}
 @end group
 
 @group
@@ -2144,6 +2154,21 @@ Symbols}.
      @result{} nil
 @end group
 @end example
+
+@noindent
+@cindex identical-contents objects, and byte-compiler
+@cindex objects with identical contents, and byte-compiler
+The Emacs Lisp byte compiler may collapse identical literal objects,
+such as literal strings, into references to the same object, with the
+effect that the byte-compiled code will compare such objects as
+@code{eq}, while the interpreted version of the same code will not.
+Therefore, your code should never rely on objects with the same
+literal contents being either @code{eq} or not @code{eq}, it should
+instead use functions that compare object contents such as
+@code{equal}, described below.  Similarly, your code should not modify
+literal objects (e.g., put text properties on literal strings), since
+doing that might affect other literal objects of the same contents, if
+the byte compiler collapses them.
 @end defun
 
 @defun equal object1 object2
@@ -2208,9 +2233,8 @@ text properties---it compares only the characters in the strings.
 @xref{Text Properties}.  Use @code{equal-including-properties} to also
 compare text properties.  For technical reasons, a unibyte string and
 a multibyte string are @code{equal} if and only if they contain the
-same sequence of character codes and all these codes are either in the
-range 0 through 127 (@acronym{ASCII}) or 160 through 255
-(@code{eight-bit-graphic}).  (@pxref{Text Representations}).
+same sequence of character codes and all these codes are in the range
+0 through 127 (@acronym{ASCII}).
 
 @example
 @group

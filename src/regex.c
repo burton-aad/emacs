@@ -2,7 +2,7 @@
    0.12.  (Implements POSIX draft P1003.2/D11.2, except for some of the
    internationalization features.)
 
-   Copyright (C) 1993-2017 Free Software Foundation, Inc.
+   Copyright (C) 1993-2018 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -155,7 +155,8 @@
 # define PTR_TO_OFFSET(d) POS_AS_IN_BUFFER (POINTER_TO_OFFSET (d))
 /* Strings are 0-indexed, buffers are 1-indexed; we pun on the boolean
    result to get the right base index.  */
-# define POS_AS_IN_BUFFER(p) ((p) + (NILP (re_match_object) || BUFFERP (re_match_object)))
+# define POS_AS_IN_BUFFER(p)                                    \
+  ((p) + (NILP (gl_state.object) || BUFFERP (gl_state.object)))
 
 # define RE_MULTIBYTE_P(bufp) ((bufp)->multibyte)
 # define RE_TARGET_MULTIBYTE_P(bufp) ((bufp)->target_multibyte)
@@ -212,7 +213,7 @@
 
 /* When used in Emacs's lib-src, we need xmalloc and xrealloc. */
 
-static void *
+static ATTRIBUTE_MALLOC void *
 xmalloc (size_t size)
 {
   void *val = malloc (size);
@@ -454,7 +455,7 @@ ptrdiff_t emacs_re_safe_alloca = MAX_ALLOCA;
 /* Like USE_SAFE_ALLOCA, but use emacs_re_safe_alloca.  */
 #  define REGEX_USE_SAFE_ALLOCA                                        \
   ptrdiff_t sa_avail = emacs_re_safe_alloca;                           \
-  ptrdiff_t sa_count = SPECPDL_INDEX (); bool sa_must_free = false
+  ptrdiff_t sa_count = SPECPDL_INDEX ()
 
 #  define REGEX_SAFE_FREE() SAFE_FREE ()
 #  define REGEX_ALLOCATE SAFE_ALLOCA
@@ -1194,7 +1195,8 @@ static const char *re_error_msgid[] =
     gettext_noop ("Premature end of regular expression"), /* REG_EEND */
     gettext_noop ("Regular expression too big"), /* REG_ESIZE */
     gettext_noop ("Unmatched ) or \\)"), /* REG_ERPAREN */
-    gettext_noop ("Range striding over charsets") /* REG_ERANGEX  */
+    gettext_noop ("Range striding over charsets"), /* REG_ERANGEX  */
+    gettext_noop ("Invalid content of \\{\\}, repetitions too big") /* REG_ESIZEBR  */
   };
 
 /* Whether to allocate memory during matching.  */
@@ -1230,6 +1232,15 @@ static const char *re_error_msgid[] =
    so REL_ALLOC should not affect this.  */
 #if defined REGEX_MALLOC && defined emacs
 # undef MATCH_MAY_ALLOCATE
+#endif
+
+/* While regex matching of a single compiled pattern isn't reentrant
+   (because we compile regexes to bytecode programs, and the bytecode
+   programs are self-modifying), the regex machinery must nevertheless
+   be reentrant with respect to _different_ patterns, and we do that
+   by avoiding global variables and using MATCH_MAY_ALLOCATE.  */
+#if !defined MATCH_MAY_ALLOCATE && defined emacs
+# error "Emacs requires MATCH_MAY_ALLOCATE"
 #endif
 
 
@@ -1915,7 +1926,7 @@ struct range_table_work_area
 	    if (num < 0)						\
 	      num = 0;							\
 	    if (RE_DUP_MAX / 10 - (RE_DUP_MAX % 10 < c - '0') < num)	\
-	      FREE_STACK_RETURN (REG_BADBR);				\
+	      FREE_STACK_RETURN (REG_ESIZEBR);				\
 	    num = num * 10 + c - '0';					\
 	    if (p == pend)						\
 	      FREE_STACK_RETURN (REG_EBRACE);				\
@@ -4032,8 +4043,7 @@ analyze_first (re_char *p, re_char *pend, char *fastmap,
 	    };
 	  /* Keep `p1' to allow the `on_failure_jump' we are jumping to
 	     to jump back to "just after here".  */
-	  /* Fallthrough */
-
+	  FALLTHROUGH;
 	case on_failure_jump:
 	case on_failure_keep_string_jump:
 	case on_failure_jump_nastyloop:
@@ -5786,7 +5796,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 
 	    EXTRACT_NUMBER (mcnt, p2 - 2);
 
-	    /* Ensure this is a indeed the trivial kind of loop
+	    /* Ensure this is indeed the trivial kind of loop
 	       we are expecting.  */
 	    assert (skip_one_char (p1) == p2 - 3);
 	    assert ((re_opcode_t) p2[-3] == jump && p2 + mcnt == p);
@@ -5895,12 +5905,12 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 #ifdef emacs
 		ssize_t offset = PTR_TO_OFFSET (d - 1);
 		ssize_t charpos = SYNTAX_TABLE_BYTE_TO_CHAR (offset);
-		UPDATE_SYNTAX_TABLE_FAST (charpos);
+		UPDATE_SYNTAX_TABLE (charpos);
 #endif
 		GET_CHAR_BEFORE_2 (c1, d, string1, end1, string2, end2);
 		s1 = SYNTAX (c1);
 #ifdef emacs
-		UPDATE_SYNTAX_TABLE_FORWARD_FAST (charpos + 1);
+		UPDATE_SYNTAX_TABLE_FORWARD (charpos + 1);
 #endif
 		PREFETCH_NOLIMIT ();
 		GET_CHAR_AFTER (c2, d, dummy);
@@ -5937,7 +5947,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 #ifdef emacs
 	      ssize_t offset = PTR_TO_OFFSET (d);
 	      ssize_t charpos = SYNTAX_TABLE_BYTE_TO_CHAR (offset);
-	      UPDATE_SYNTAX_TABLE_FAST (charpos);
+	      UPDATE_SYNTAX_TABLE (charpos);
 #endif
 	      PREFETCH ();
 	      GET_CHAR_AFTER (c2, d, dummy);
@@ -5982,7 +5992,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 #ifdef emacs
 	      ssize_t offset = PTR_TO_OFFSET (d) - 1;
 	      ssize_t charpos = SYNTAX_TABLE_BYTE_TO_CHAR (offset);
-	      UPDATE_SYNTAX_TABLE_FAST (charpos);
+	      UPDATE_SYNTAX_TABLE (charpos);
 #endif
 	      GET_CHAR_BEFORE_2 (c1, d, string1, end1, string2, end2);
 	      s1 = SYNTAX (c1);
@@ -5997,7 +6007,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 		  PREFETCH_NOLIMIT ();
 		  GET_CHAR_AFTER (c2, d, dummy);
 #ifdef emacs
-		  UPDATE_SYNTAX_TABLE_FORWARD_FAST (charpos);
+		  UPDATE_SYNTAX_TABLE_FORWARD (charpos);
 #endif
 		  s2 = SYNTAX (c2);
 
@@ -6026,7 +6036,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 #ifdef emacs
 	      ssize_t offset = PTR_TO_OFFSET (d);
 	      ssize_t charpos = SYNTAX_TABLE_BYTE_TO_CHAR (offset);
-	      UPDATE_SYNTAX_TABLE_FAST (charpos);
+	      UPDATE_SYNTAX_TABLE (charpos);
 #endif
 	      PREFETCH ();
 	      c2 = RE_STRING_CHAR (d, target_multibyte);
@@ -6069,7 +6079,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 #ifdef emacs
 	      ssize_t offset = PTR_TO_OFFSET (d) - 1;
 	      ssize_t charpos = SYNTAX_TABLE_BYTE_TO_CHAR (offset);
-	      UPDATE_SYNTAX_TABLE_FAST (charpos);
+	      UPDATE_SYNTAX_TABLE (charpos);
 #endif
 	      GET_CHAR_BEFORE_2 (c1, d, string1, end1, string2, end2);
 	      s1 = SYNTAX (c1);
@@ -6084,7 +6094,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 		  PREFETCH_NOLIMIT ();
 		  c2 = RE_STRING_CHAR (d, target_multibyte);
 #ifdef emacs
-		  UPDATE_SYNTAX_TABLE_FORWARD_FAST (charpos + 1);
+		  UPDATE_SYNTAX_TABLE_FORWARD (charpos + 1);
 #endif
 		  s2 = SYNTAX (c2);
 
@@ -6107,7 +6117,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, re_char *string1,
 	    {
 	      ssize_t offset = PTR_TO_OFFSET (d);
 	      ssize_t pos1 = SYNTAX_TABLE_BYTE_TO_CHAR (offset);
-	      UPDATE_SYNTAX_TABLE_FAST (pos1);
+	      UPDATE_SYNTAX_TABLE (pos1);
 	    }
 #endif
 	    {

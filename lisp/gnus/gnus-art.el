@@ -1,6 +1,6 @@
 ;;; gnus-art.el --- article mode commands for Gnus
 
-;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2018 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news
@@ -24,8 +24,7 @@
 
 ;;; Code:
 
-(eval-when-compile
-  (require 'cl))
+(eval-when-compile (require 'cl-lib))
 (defvar tool-bar-map)
 (defvar w3m-minor-mode-map)
 
@@ -199,9 +198,9 @@ Possible values in this list are:
   `newsgroups'  Newsgroup identical to Gnus group.
   `to-address'  To identical to To-address.
   `to-list'     To identical to To-list.
-  `cc-list'     CC identical to To-list.
-  `followup-to' Followup-to identical to Newsgroups.
-  `reply-to'    Reply-to identical to From.
+  `cc-list'     Cc identical to To-list.
+  `followup-to' Followup-To identical to Newsgroups.
+  `reply-to'    Reply-To identical to From.
   `date'        Date less than four days old.
   `long-to'     To and/or Cc longer than 1024 characters.
   `many-to'     Multiple To and/or Cc."
@@ -209,9 +208,9 @@ Possible values in this list are:
 	      (const :tag "Newsgroups identical to Gnus group." newsgroups)
 	      (const :tag "To identical to To-address." to-address)
 	      (const :tag "To identical to To-list." to-list)
-	      (const :tag "CC identical to To-list." cc-list)
-	      (const :tag "Followup-to identical to Newsgroups." followup-to)
-	      (const :tag "Reply-to identical to From." reply-to)
+	      (const :tag "Cc identical to To-list." cc-list)
+	      (const :tag "Followup-To identical to Newsgroups." followup-to)
+	      (const :tag "Reply-To identical to From." reply-to)
 	      (const :tag "Date less than four days old." date)
 	      (const :tag "To and/or Cc longer than 1024 characters." long-to)
 	      (const :tag "Multiple To and/or Cc headers." many-to))
@@ -527,7 +526,7 @@ each invocation of the saving commands."
   "If non-nil, show the cursor in the Article buffer even when not selected."
   :version "25.1"
   :group 'gnus-article
-  :type 'bool)
+  :type 'boolean)
 
 (defcustom gnus-saved-headers gnus-visible-headers
   "Headers to keep if `gnus-save-all-headers' is nil.
@@ -761,9 +760,6 @@ Obsolete; use the face `gnus-signature' for customizations instead."
   "Face used for highlighting a signature in the article buffer."
   :group 'gnus-article-highlight
   :group 'gnus-article-signature)
-;; backward-compatibility alias
-(put 'gnus-signature-face 'face-alias 'gnus-signature)
-(put 'gnus-signature-face 'obsolete-face "22.1")
 
 (defface gnus-header-from
   '((((class color)
@@ -777,9 +773,6 @@ Obsolete; use the face `gnus-signature' for customizations instead."
   "Face used for displaying from headers."
   :group 'gnus-article-headers
   :group 'gnus-article-highlight)
-;; backward-compatibility alias
-(put 'gnus-header-from-face 'face-alias 'gnus-header-from)
-(put 'gnus-header-from-face 'obsolete-face "22.1")
 
 (defface gnus-header-subject
   '((((class color)
@@ -793,9 +786,6 @@ Obsolete; use the face `gnus-signature' for customizations instead."
   "Face used for displaying subject headers."
   :group 'gnus-article-headers
   :group 'gnus-article-highlight)
-;; backward-compatibility alias
-(put 'gnus-header-subject-face 'face-alias 'gnus-header-subject)
-(put 'gnus-header-subject-face 'obsolete-face "22.1")
 
 (defface gnus-header-newsgroups
   '((((class color)
@@ -811,9 +801,6 @@ In the default setup this face is only used for crossposted
 articles."
   :group 'gnus-article-headers
   :group 'gnus-article-highlight)
-;; backward-compatibility alias
-(put 'gnus-header-newsgroups-face 'face-alias 'gnus-header-newsgroups)
-(put 'gnus-header-newsgroups-face 'obsolete-face "22.1")
 
 (defface gnus-header-name
   '((((class color)
@@ -827,9 +814,6 @@ articles."
   "Face used for displaying header names."
   :group 'gnus-article-headers
   :group 'gnus-article-highlight)
-;; backward-compatibility alias
-(put 'gnus-header-name-face 'face-alias 'gnus-header-name)
-(put 'gnus-header-name-face 'obsolete-face "22.1")
 
 (defface gnus-header-content
   '((((class color)
@@ -842,9 +826,6 @@ articles."
      (:italic t)))  "Face used for displaying header content."
   :group 'gnus-article-headers
   :group 'gnus-article-highlight)
-;; backward-compatibility alias
-(put 'gnus-header-content-face 'face-alias 'gnus-header-content)
-(put 'gnus-header-content-face 'obsolete-face "22.1")
 
 (defcustom gnus-header-face-alist
   '(("From" nil gnus-header-from)
@@ -1635,6 +1616,16 @@ It is a string, such as \"PGP\". If nil, ask user."
 
 (defcustom gnus-blocked-images 'gnus-block-private-groups
   "Images that have URLs matching this regexp will be blocked.
+Note that the main reason external images are included in HTML
+emails (these days) is to allow tracking whether you've read the
+email message or not.  If you allow loading images in HTML
+emails, you give up privacy.
+
+The default value of this variable blocks loading external
+resources when reading email groups (and therefore stops
+tracking), but allows loading external resources when reading
+from NNTP newsgroups and the like.
+
 This can also be a function to be evaluated.  If so, it will be
 called with the group name as the parameter, and should return a
 regexp."
@@ -1816,7 +1807,7 @@ Initialized from `text-mode-syntax-table'.")
       (if (looking-at (car list))
 	  (setq list nil)
 	(setq list (cdr list))
-	(incf i)))
+	(cl-incf i)))
       i))
 
 (defun article-hide-headers (&optional _arg _delete)
@@ -1956,7 +1947,7 @@ always hide."
 		(when (and cc to-list
 			   (ignore-errors
 			     (gnus-string-equal
-			      ;; only one address in CC
+			      ;; only one address in Cc
 			      (nth 1 (mail-extract-address-components cc))
 			      to-list)))
 		  (gnus-article-hide-header "cc"))))
@@ -2226,7 +2217,7 @@ unfolded."
       (dolist (elem gnus-article-image-alist)
 	(gnus-delete-images (car elem))))))
 
-(autoload 'w3m-toggle-inline-images "w3m")
+(declare-function w3m-toggle-inline-images "w3m")
 
 (defun gnus-article-show-images ()
   "Show any images that are in the HTML-rendered article buffer.
@@ -2236,10 +2227,12 @@ This only works if the article in question is HTML."
     (save-restriction
       (widen)
       (if (eq mm-text-html-renderer 'w3m)
-	  (w3m-toggle-inline-images)
+	  (progn
+	    (require 'w3m)
+	    (w3m-toggle-inline-images))
 	(dolist (region (gnus-find-text-property-region (point-min) (point-max)
 							'image-displayer))
-	  (destructuring-bind (start end function) region
+	  (cl-destructuring-bind (start end function) region
 	    (funcall function (get-text-property start 'image-url)
 		     start end)))))))
 
@@ -2938,7 +2931,8 @@ message header will be added to the bodies of the \"text/html\" parts."
 					 (encode-coding-string
 					  title coding))
 				 body content))
-		       (setq eheader (string-as-unibyte (buffer-string))
+		       (setq eheader (encode-coding-string
+				      (buffer-string) 'utf-8)
 			     body content)))
 		   (erase-buffer)
 		   (mm-disable-multibyte)
@@ -3020,9 +3014,6 @@ articles to verify whether you have read the message.  As
 `gnus-article-browse-html-article' passes the HTML content to the
 browser without eliminating these \"web bugs\" you should only
 use it for mails from trusted senders.
-
-If you always want to display HTML parts in the browser, set
-`mm-text-html-renderer' to nil.
 
 This command creates temporary files to pass HTML contents including
 images if any to the browser, and deletes them when exiting the group
@@ -4716,6 +4707,11 @@ If ALL-HEADERS is non-nil, no headers are hidden."
 	      (forward-line -1))
 	    (set-window-point (get-buffer-window (current-buffer)) (point))
 	    (gnus-configure-windows 'article)
+	    ;; Make sure the article begins with the top of the header.
+	    (let ((window (get-buffer-window gnus-article-buffer)))
+	      (when window
+		(with-current-buffer (window-buffer window)
+		  (set-window-point window (point-min)))))
 	    (gnus-run-hooks 'gnus-article-prepare-hook)
 	    t))))))
 
@@ -5219,7 +5215,7 @@ available media-types."
 	    (gnus-completing-read
 	     "View as MIME type"
 	     (if pred
-		 (gnus-remove-if-not pred (mailcap-mime-types))
+		 (seq-filter pred (mailcap-mime-types))
 	       (mailcap-mime-types))
 	     nil nil nil
 	     (car default)))))
@@ -6687,7 +6683,7 @@ not have a face in `gnus-article-boring-faces'."
   (interactive "P")
   (gnus-article-check-buffer)
   (let ((nosaves
-	 '("q" "Q"  "c" "r" "\C-c\C-f" "m"  "a" "f" "WDD" "WDW"
+	 '("q" "Q" "r" "\C-c\C-f" "m"  "a" "f" "WDD" "WDW"
 	   "Zc" "ZC" "ZE" "ZQ" "ZZ" "Zn" "ZR" "ZG" "ZN" "ZP"
 	   "=" "^" "\M-^" "|"))
 	(nosave-but-article
@@ -6711,8 +6707,7 @@ not have a face in `gnus-article-boring-faces'."
 	  (member keys nosave-but-article)
 	  (member keys nosave-in-article))
       (let (func)
-	(save-window-excursion
-	  (pop-to-buffer gnus-article-current-summary)
+	(with-current-buffer gnus-article-current-summary
 	  ;; We disable the pick minor mode commands.
 	  (let (gnus-pick-mode)
 	    (setq func (key-binding keys t))))
@@ -6754,7 +6749,8 @@ not have a face in `gnus-article-boring-faces'."
 	;; We disable the pick minor mode commands.
 	(setq func (let (gnus-pick-mode)
 		     (key-binding keys t)))
-	(when (get func 'disabled)
+	(when (and (symbolp func)
+		   (get func 'disabled))
 	  (error "Function %s disabled" func))
 	(if (and func
 		 (functionp func)
@@ -7052,9 +7048,8 @@ If given a prefix, show the hidden text instead."
             ;; equivalent of string-make-multibyte which amount to decoding
             ;; with locale-coding-system, causing failure of
             ;; subsequent decoding.
-            (insert (string-to-multibyte
-                     (with-current-buffer gnus-original-article-buffer
-                       (buffer-substring (point-min) (point-max)))))
+            (insert (with-current-buffer gnus-original-article-buffer
+                      (buffer-substring (point-min) (point-max))))
 	    'article)
 	   ;; Check the backlog.
 	   ((and gnus-keep-backlog
@@ -8230,7 +8225,7 @@ url is put as the `gnus-button-url' overlay property on the button."
 
 (defun gnus-button-handle-news (url)
   "Fetch a news URL."
-  (destructuring-bind (_scheme server port group message-id _articles)
+  (cl-destructuring-bind (_scheme server port group message-id _articles)
       (gnus-parse-news-url url)
     (cond
      (message-id

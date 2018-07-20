@@ -1,6 +1,6 @@
 ;;; ruby-mode.el --- Major mode for editing Ruby files -*- lexical-binding: t -*-
 
-;; Copyright (C) 1994-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1994-2018 Free Software Foundation, Inc.
 
 ;; Authors: Yukihiro Matsumoto
 ;;	Nobuyoshi Nakada
@@ -38,6 +38,8 @@
 ;; Still needs more docstrings; search below for TODO.
 
 ;;; Code:
+
+(eval-when-compile (require 'cl-lib))
 
 (defgroup ruby nil
   "Major mode for editing Ruby code."
@@ -255,8 +257,7 @@ the statement:
     qux
   end
 
-Only has effect when `ruby-use-smie' is t.
-"
+Only has effect when `ruby-use-smie' is t."
   :type `(choice
           (const :tag "None" nil)
           (const :tag "All" t)
@@ -1364,7 +1365,6 @@ delimiter."
                                              "\\)\\>")))
                     (eq (ruby-deep-indent-paren-p t) 'space)
                     (not (bobp)))
-                   (widen)
                    (goto-char (or begin parse-start))
                    (skip-syntax-forward " ")
                    (current-column))
@@ -2312,20 +2312,22 @@ See `font-lock-syntax-table'.")
       (process-send-eof ruby--flymake-proc))))
 
 (defcustom ruby-flymake-use-rubocop-if-available t
-  "Non-nil to use the Rubocop Flymake backend.
-Only takes effect if Rubocop is installed."
+  "Non-nil to use the RuboCop Flymake backend.
+Only takes effect if RuboCop is installed."
+  :version "26.1"
   :type 'boolean
   :group 'ruby
   :safe 'booleanp)
 
 (defcustom ruby-rubocop-config ".rubocop.yml"
   "Configuration file for `ruby-flymake-rubocop'."
+  :version "26.1"
   :type 'string
   :group 'ruby
   :safe 'stringp)
 
 (defun ruby-flymake-rubocop (report-fn &rest _args)
-  "Rubocop backend for Flymake."
+  "RuboCop backend for Flymake."
   (unless (executable-find "rubocop")
     (error "Cannot find the rubocop executable"))
 
@@ -2351,7 +2353,7 @@ Only takes effect if Rubocop is installed."
          (when (eq (process-exit-status proc) 127)
            ;; Not sure what to do in this case.  Maybe ideally we'd
            ;; switch back to ruby-flymake-simple.
-           (flymake-log :warning "Rubocop returned status 127: %s"
+           (flymake-log :warning "RuboCop returned status 127: %s"
                         (buffer-string)))
          (goto-char (point-min))
          (cl-loop

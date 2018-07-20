@@ -1,6 +1,6 @@
 /* timespec -- System time interface
 
-   Copyright (C) 2000, 2002, 2004-2005, 2007, 2009-2017 Free Software
+   Copyright (C) 2000, 2002, 2004-2005, 2007, 2009-2018 Free Software
    Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
@@ -87,7 +87,7 @@ timespec_cmp (struct timespec a, struct timespec b)
     return 1;
 
   /* Pacify gcc -Wstrict-overflow (bleeding-edge circa 2017-10-02).  See:
-     http://lists.gnu.org/r/bug-gnulib/2017-10/msg00006.html  */
+     https://lists.gnu.org/r/bug-gnulib/2017-10/msg00006.html  */
   assume (-1 <= a.tv_nsec && a.tv_nsec <= 2 * TIMESPEC_RESOLUTION);
   assume (-1 <= b.tv_nsec && b.tv_nsec <= 2 * TIMESPEC_RESOLUTION);
 

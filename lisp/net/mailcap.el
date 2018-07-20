@@ -1,6 +1,6 @@
 ;;; mailcap.el --- MIME media types configuration -*- lexical-binding: t -*-
 
-;; Copyright (C) 1998-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2018 Free Software Foundation, Inc.
 
 ;; Author: William M. Perry <wmperry@aventail.com>
 ;;	Lars Magne Ingebrigtsen <larsi@gnus.org>
@@ -35,6 +35,14 @@
   "Definition of viewers for MIME types."
   :version "21.1"
   :group 'mime)
+
+(defcustom mailcap-prefer-mailcap-viewers t
+  "If non-nil, prefer viewers specified in ~/.mailcap.
+If nil, the most specific viewer will be chosen, even if there is
+a general override in ~/.mailcap.  For instance, if /etc/mailcap
+has an entry for \"image/gif\", that one will be chosen even if
+you have an entry for \"image/*\" in your ~/.mailcap file."
+  :type 'boolean)
 
 (defvar mailcap-parse-args-syntax-table
   (let ((table (copy-syntax-table emacs-lisp-mode-syntax-table)))
@@ -92,13 +100,14 @@ replaced with the file.
 MIME-TYPE is a regular expression being matched against the
 actual MIME type.  It is implicitly surrounded with ^ and $.
 
-TEST is an lisp form which is evaluated in order to test if the
+TEST is a lisp form which is evaluated in order to test if the
 entry should be chosen.  The `test' entry is optional.
 
 When selecting a viewer for a given MIME type, the first viewer
 in this list with a matching MIME-TYPE and successful TEST is
 selected.  Only if none matches, the standard `mailcap-mime-data'
 is consulted."
+  :version "26.1"
   :type '(repeat
 	  (list
 	   (choice (function :tag "Function or mode")
@@ -418,20 +427,32 @@ MAILCAPS if set; otherwise (on Unix) use the path from RFC 1524, plus
      ((memq system-type mailcap-poor-system-types)
       (setq path '("~/.mailcap" "~/mail.cap" "~/etc/mail.cap")))
      (t (setq path
-	      ;; This is per RFC 1524, specifically
-	      ;; with /usr before /usr/local.
-	      '("~/.mailcap" "/etc/mailcap" "/usr/etc/mailcap"
-		"/usr/local/etc/mailcap"))))
-    (dolist (fname (reverse
-                    (if (stringp path)
-                        (split-string path path-separator t)
-                      path)))
-      (when (and (file-readable-p fname) (file-regular-p fname))
-        (mailcap-parse-mailcap fname)))
+	      ;; This is per RFC 1524, specifically with /usr before
+	      ;; /usr/local.
+	      '("~/.mailcap"
+                ("/etc/mailcap" 'after)
+                ("/usr/etc/mailcap" 'after)
+		("/usr/local/etc/mailcap" 'after)))))
+    ;; We read the entries from ~/.mailcap before the built-in values,
+    ;; but place the rest of then afterwards as fallback values.
+    (dolist (spec (reverse
+                        (if (stringp path)
+                            (split-string path path-separator t)
+                          path)))
+      (let ((afterp (and (consp spec)
+                         (cadr spec)))
+            (file-name (if (stringp spec)
+                           spec
+                         (car spec))))
+        (when (and (file-readable-p file-name)
+                   (file-regular-p file-name))
+          (mailcap-parse-mailcap file-name afterp))))
     (setq mailcap-parsed-p t)))
 
-(defun mailcap-parse-mailcap (fname)
-  "Parse out the mailcap file specified by FNAME."
+(defun mailcap-parse-mailcap (fname &optional after)
+  "Parse out the mailcap file specified by FNAME.
+If AFTER, place the entries from the file after the ones that are
+already there."
   (let (major				; The major mime type (image/audio/etc)
 	minor				; The minor mime type (gif, basic, etc)
 	save-pos			; Misc saved positions used in parsing
@@ -501,7 +522,7 @@ MAILCAPS if set; otherwise (on Unix) use the path from RFC 1524, plus
 							  "*" minor))))
 			    (mailcap-parse-mailcap-extras save-pos (point))))
 	  (mailcap-mailcap-entry-passes-test info)
-	  (mailcap-add-mailcap-entry major minor info))
+	  (mailcap-add-mailcap-entry major minor info after))
 	(beginning-of-line)))))
 
 (defun mailcap-parse-mailcap-extras (st nd)
@@ -554,7 +575,7 @@ MAILCAPS if set; otherwise (on Unix) use the path from RFC 1524, plus
 (defun mailcap-mailcap-entry-passes-test (info)
   "Replace the test clause of INFO itself with a boolean for some cases.
 This function supports only `test -n $DISPLAY' and `test -z $DISPLAY',
-replaces them with t or nil.  As for others or if INFO has a interactive
+replaces them with t or nil.  As for others or if INFO has an interactive
 spec (needsterm, needsterminal, or needsx11) but DISPLAY is not set,
 the test clause will be unchanged."
   (let ((test (assq 'test info))	; The test clause
@@ -684,7 +705,7 @@ to supply to the test."
 	   (push (list otest result) mailcap-viewer-test-cache)
 	   result))))
 
-(defun mailcap-add-mailcap-entry (major minor info)
+(defun mailcap-add-mailcap-entry (major minor info &optional after)
   (let ((old-major (assoc major mailcap-mime-data)))
     (if (null old-major)		; New major area
 	(push (cons major (list (cons minor info))) mailcap-mime-data)
@@ -692,15 +713,23 @@ to supply to the test."
 	(cond
 	 ((or (null cur-minor)		; New minor area, or
 	      (assq 'test info))	; Has a test, insert at beginning
-	  (setcdr old-major (cons (cons minor info) (cdr old-major))))
+	  (setcdr old-major
+                  (if after ; Or after, if specified.
+                      (nconc (cdr old-major)
+                             (list (cons minor info)))
+                    (cons (cons minor info) (cdr old-major)))))
 	 ((and (not (assq 'test info))	; No test info, replace completely
 	       (not (assq 'test cur-minor))
 	       (equal (assq 'viewer info)  ; Keep alternative viewer
 		      (assq 'viewer cur-minor)))
-	  (setcdr cur-minor info))
+          (unless after
+	    (setcdr cur-minor info)))
 	 (t
-	  (setcdr old-major (cons (cons minor info) (cdr old-major))))))
-      )))
+	  (setcdr old-major
+                  (if after
+                      (nconc (cdr old-major) (list (cons minor info)))
+                    (setcdr old-major
+                            (cons (cons minor info) (cdr old-major)))))))))))
 
 (defun mailcap-add (type viewer &optional test)
   "Add VIEWER as a handler for TYPE.
@@ -783,18 +812,23 @@ If NO-DECODE is non-nil, don't decode STRING."
           (setq passed (list viewer))
         ;; None found, so heuristically select some applicable viewer
         ;; from `mailcap-mime-data'.
+        (mailcap-parse-mailcaps)
         (setq major (split-string (car ctl) "/"))
         (setq minor (cadr major)
               major (car major))
         (when (setq major-info (cdr (assoc major mailcap-mime-data)))
           (when (setq viewers (mailcap-possible-viewers major-info minor))
-            (setq info (mapcar (lambda (a) (cons (symbol-name (car a))
-                                            (cdr a)))
+            (setq info (mapcar (lambda (a)
+                                 (cons (symbol-name (car a)) (cdr a)))
                                (cdr ctl)))
             (dolist (entry viewers)
               (when (mailcap-viewer-passes-test entry info)
                 (push entry passed)))
-            (setq passed (sort passed 'mailcap-viewer-lessp))
+            ;; The data is in "logical" order; entries from ~/.mailcap
+            ;; are first, so we don't need to do any sorting if the
+            ;; user wants ~/.mailcap to be preferred.
+            (unless mailcap-prefer-mailcap-viewers
+              (setq passed (sort passed 'mailcap-viewer-lessp)))
             (setq viewer (car passed))))
         (when (and (stringp (cdr (assq 'viewer viewer)))
                    passed)
@@ -1004,6 +1038,14 @@ If FORCE, re-parse even if already parsed."
 	   (not (eq (string-to-char extn) ?.)))
       (setq extn (concat "." extn)))
   (cdr (assoc (downcase extn) mailcap-mime-extensions)))
+
+(defun mailcap-file-name-to-mime-type (file-name)
+  "Return the MIME content type based on the FILE-NAME's extension.
+For instance, \"foo.png\" will result in \"image/png\"."
+  (mailcap-extension-to-mime
+   (if (string-match "\\(\\.[^.]+\\)\\'" file-name)
+       (match-string 1 file-name)
+     "")))
 
 (defun mailcap-mime-types ()
   "Return a list of MIME media types."

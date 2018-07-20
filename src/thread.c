@@ -1,5 +1,5 @@
 /* Threading code.
-Copyright (C) 2012-2017 Free Software Foundation, Inc.
+Copyright (C) 2012-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -973,11 +973,17 @@ DEFUN ("all-threads", Fall_threads, Sall_threads, 0, 0, 0,
   return result;
 }
 
-DEFUN ("thread-last-error", Fthread_last_error, Sthread_last_error, 0, 0, 0,
-       doc: /* Return the last error form recorded by a dying thread.  */)
-  (void)
+DEFUN ("thread-last-error", Fthread_last_error, Sthread_last_error, 0, 1, 0,
+       doc: /* Return the last error form recorded by a dying thread.
+If CLEANUP is non-nil, remove this error form from history.  */)
+     (Lisp_Object cleanup)
 {
-  return last_thread_error;
+  Lisp_Object result = last_thread_error;
+
+  if (!NILP (cleanup))
+    last_thread_error = Qnil;
+
+  return result;
 }
 
 
@@ -1020,6 +1026,14 @@ bool
 main_thread_p (void *ptr)
 {
   return ptr == &main_thread;
+}
+
+bool
+in_current_thread (void)
+{
+  if (current_thread == NULL)
+    return false;
+  return sys_thread_equal (sys_thread_self (), current_thread->thread_id);
 }
 
 void
@@ -1068,9 +1082,20 @@ syms_of_threads (void)
 
       staticpro (&last_thread_error);
       last_thread_error = Qnil;
+
+      Fprovide (intern_c_string ("threads"), Qnil);
     }
 
   DEFSYM (Qthreadp, "threadp");
   DEFSYM (Qmutexp, "mutexp");
   DEFSYM (Qcondition_variable_p, "condition-variable-p");
+
+  DEFVAR_LISP ("main-thread",
+	       Vmain_thread,
+    doc: /* The main thread of Emacs.  */);
+#ifdef THREADS_ENABLED
+  XSETTHREAD (Vmain_thread, &main_thread);
+#else
+  Vmain_thread = Qnil;
+#endif
 }

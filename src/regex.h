@@ -1,7 +1,7 @@
 /* Definitions for data structures and routines for the regular
    expression library, version 0.12.
 
-   Copyright (C) 1985, 1989-1993, 1995, 2000-2017 Free Software
+   Copyright (C) 1985, 1989-1993, 1995, 2000-2018 Free Software
    Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
@@ -181,8 +181,15 @@ typedef unsigned long reg_syntax_t;
    string; if it's nil, we are matching text in the current buffer; if
    it's t, we are matching text in a C string.
 
-   This is defined as a macro in thread.h, which see.  */
-/* extern Lisp_Object re_match_object; */
+   This value is effectively another parameter to re_search_2 and
+   re_match_2.  No calls into Lisp or thread switches are allowed
+   before setting re_match_object and calling into the regex search
+   and match functions.  These functions capture the current value of
+   re_match_object into gl_state on entry.
+
+   TODO: once we get rid of the !emacs case in this code, turn into an
+   actual function parameter.  */
+extern Lisp_Object re_match_object;
 #endif
 
 /* Roughly the maximum number of failure points on the stack.  */
@@ -270,8 +277,10 @@ extern ptrdiff_t emacs_re_safe_alloca;
 #ifdef RE_DUP_MAX
 # undef RE_DUP_MAX
 #endif
-/* If sizeof(int) == 2, then ((1 << 15) - 1) overflows.  */
-#define RE_DUP_MAX (0x7fff)
+/* Repeat counts are stored in opcodes as 2 byte integers.  This was
+   previously limited to 7fff because the parsing code uses signed
+   ints.  But Emacs only runs on 32 bit platforms anyway.  */
+#define RE_DUP_MAX (0xffff)
 
 
 /* POSIX `cflags' bits (i.e., information for `regcomp').  */
@@ -337,7 +346,8 @@ typedef enum
   REG_EEND,		/* Premature end.  */
   REG_ESIZE,		/* Compiled pattern bigger than 2^16 bytes.  */
   REG_ERPAREN,		/* Unmatched ) or \); not returned from regcomp.  */
-  REG_ERANGEX		/* Range striding over charsets.  */
+  REG_ERANGEX,		/* Range striding over charsets.  */
+  REG_ESIZEBR           /* n or m too big in \{n,m\} */
 } reg_errcode_t;
 
 /* This data structure represents a compiled pattern.  Before calling
@@ -364,7 +374,10 @@ struct re_pattern_buffer
 	/* Number of bytes actually used in `buffer'.  */
   size_t used;
 
-#ifndef emacs
+#ifdef emacs
+        /* Charset of unibyte characters at compiling time. */
+  int charset_unibyte;
+#else
         /* Syntax setting with which the pattern was compiled.  */
   reg_syntax_t syntax;
 #endif
@@ -424,9 +437,6 @@ struct re_pattern_buffer
   /* If true, multi-byte form in the target of match should be
      recognized as a multibyte character.  */
   unsigned target_multibyte : 1;
-
-  /* Charset of unibyte characters at compiling time. */
-  int charset_unibyte;
 #endif
 
 /* [[[end pattern_buffer]]] */

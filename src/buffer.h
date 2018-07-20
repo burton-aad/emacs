@@ -1,6 +1,6 @@
 /* Header file for the buffer manipulation primitives.
 
-Copyright (C) 1985-1986, 1993-1995, 1997-2017 Free Software Foundation,
+Copyright (C) 1985-1986, 1993-1995, 1997-2018 Free Software Foundation,
 Inc.
 
 This file is part of GNU Emacs.
@@ -912,7 +912,7 @@ INLINE struct buffer *
 XBUFFER (Lisp_Object a)
 {
   eassert (BUFFERP (a));
-  return XUNTAG (a, Lisp_Vectorlike);
+  return XUNTAG (a, Lisp_Vectorlike, struct buffer);
 }
 
 /* Most code should use these functions to set Lisp fields in struct
@@ -947,6 +947,16 @@ INLINE void
 bset_display_count (struct buffer *b, Lisp_Object val)
 {
   b->display_count_ = val;
+}
+INLINE void
+bset_left_margin_cols (struct buffer *b, Lisp_Object val)
+{
+  b->left_margin_cols_ = val;
+}
+INLINE void
+bset_right_margin_cols (struct buffer *b, Lisp_Object val)
+{
+  b->right_margin_cols_ = val;
 }
 INLINE void
 bset_display_time (struct buffer *b, Lisp_Object val)

@@ -1,6 +1,6 @@
 ;;; editfns-tests.el -- tests for editfns.c
 
-;; Copyright (C) 2016-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2016-2018 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -136,6 +136,55 @@
 (ert-deftest format-c-float ()
   (should-error (format "%c" 0.5)))
 
+;;; Test for Bug#29609.
+(ert-deftest format-sharp-0-x ()
+  (should (string-equal (format "%#08x" #x10) "0x000010"))
+  (should (string-equal (format "%#05X" #x10) "0X010"))
+  (should (string-equal (format "%#04x" 0) "0000")))
+
+
+;;; Tests for Bug#30408.
+
+(ert-deftest format-%d-large-float ()
+  (should (string-equal (format "%d" 18446744073709551616.0)
+                        "18446744073709551616"))
+  (should (string-equal (format "%d" -18446744073709551616.0)
+                        "-18446744073709551616")))
+
+;;; Perhaps Emacs will be improved someday to return the correct
+;;; answer for positive numbers instead of overflowing; in
+;;; that case these tests will need to be changed.  In the meantime make
+;;; sure Emacs is reporting the overflow correctly.
+(ert-deftest format-%x-large-float ()
+  (should-error (format "%x" 18446744073709551616.0)
+                :type 'overflow-error))
+(ert-deftest read-large-integer ()
+  (should-error (read (format "%d0" most-negative-fixnum))
+                :type 'overflow-error)
+  (should-error (read (format "%+d" (* -8.0 most-negative-fixnum)))
+                :type 'overflow-error)
+  (should-error (read (substring (format "%d" most-negative-fixnum) 1))
+                :type 'overflow-error)
+  (should-error (read (format "#x%x" most-negative-fixnum))
+                :type 'overflow-error)
+  (should-error (read (format "#o%o" most-negative-fixnum))
+                :type 'overflow-error)
+  (should-error (read (format "#32rG%x" most-positive-fixnum))
+                :type 'overflow-error))
+
+(ert-deftest format-%o-invalid-float ()
+  (should-error (format "%o" -1e-37)
+                :type 'overflow-error))
+
+;; Bug#31938
+(ert-deftest format-%d-float ()
+  (should (string-equal (format "%d" -1.1) "-1"))
+  (should (string-equal (format "%d" -0.9) "0"))
+  (should (string-equal (format "%d" -0.0) "0"))
+  (should (string-equal (format "%d" 0.0) "0"))
+  (should (string-equal (format "%d" 0.9) "0"))
+  (should (string-equal (format "%d" 1.1) "1")))
+
 ;;; Check format-time-string with various TZ settings.
 ;;; Use only POSIX-compatible TZ values, since the tests should work
 ;;; even if tzdb is not in use.
@@ -246,5 +295,67 @@
         (should (equal-including-properties
                  (buffer-string)
                  "foo bar baz qux"))))))
+
+(ert-deftest replace-buffer-contents-bug31837 ()
+  (switch-to-buffer "a")
+  (insert-char (char-from-name "SMILE"))
+  (insert "1234")
+  (switch-to-buffer "b")
+  (insert-char (char-from-name "SMILE"))
+  (insert "5678")
+  (replace-buffer-contents "a")
+  (should (equal (buffer-substring-no-properties (point-min) (point-max))
+                 (concat (string (char-from-name "SMILE")) "1234"))))
+
+(ert-deftest delete-region-undo-markers-1 ()
+  "Make sure we don't end up with freed markers reachable from Lisp."
+  ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=30931#40
+  (with-temp-buffer
+    (insert "1234567890")
+    (setq buffer-undo-list nil)
+    (narrow-to-region 2 5)
+    ;; `save-restriction' in a narrowed buffer creates two markers
+    ;; representing the current restriction.
+    (save-restriction
+      (widen)
+      ;; Any markers *within* the deleted region are put onto the undo
+      ;; list.
+      (delete-region 1 6))
+    ;; (princ (format "%S" buffer-undo-list) #'external-debugging-output)
+    ;; `buffer-undo-list' is now
+    ;; (("12345" . 1) (#<temp-marker1> . -1) (#<temp-marker2> . 1))
+    ;;
+    ;; If temp-marker1 or temp-marker2 are freed prematurely, calling
+    ;; `type-of' on them will cause Emacs to abort.  Calling
+    ;; `garbage-collect' will also abort if it finds any reachable
+    ;; freed objects.
+    (should (eq (type-of (car (nth 1 buffer-undo-list))) 'marker))
+    (should (eq (type-of (car (nth 2 buffer-undo-list))) 'marker))
+    (garbage-collect)))
+
+(ert-deftest delete-region-undo-markers-2 ()
+  "Make sure we don't end up with freed markers reachable from Lisp."
+  ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=30931#55
+  (with-temp-buffer
+    (insert "1234567890")
+    (setq buffer-undo-list nil)
+    ;; signal_before_change creates markers delimiting a change
+    ;; region.
+    (let ((before-change-functions
+           (list (lambda (beg end)
+                   (delete-region (1- beg) (1+ end))))))
+      (delete-region 2 5))
+    ;; (princ (format "%S" buffer-undo-list) #'external-debugging-output)
+    ;; `buffer-undo-list' is now
+    ;; (("678" . 1) ("12345" . 1) (#<marker in no buffer> . -1)
+    ;;  (#<temp-marker1> . -1) (#<temp-marker2> . -4))
+    ;;
+    ;; If temp-marker1 or temp-marker2 are freed prematurely, calling
+    ;; `type-of' on them will cause Emacs to abort.  Calling
+    ;; `garbage-collect' will also abort if it finds any reachable
+    ;; freed objects.
+    (should (eq (type-of (car (nth 3 buffer-undo-list))) 'marker))
+    (should (eq (type-of (car (nth 4 buffer-undo-list))) 'marker))
+    (garbage-collect)))
 
 ;;; editfns-tests.el ends here

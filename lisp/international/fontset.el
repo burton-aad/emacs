@@ -1,6 +1,6 @@
 ;;; fontset.el --- commands for handling fontset
 
-;; Copyright (C) 1997-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1997-2018 Free Software Foundation, Inc.
 ;; Copyright (C) 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
 ;;   2005, 2006, 2007, 2008, 2009, 2010, 2011
 ;;   National Institute of Advanced Industrial Science and Technology (AIST)
@@ -53,7 +53,10 @@
 	("ascii-0$" . ascii)
 	("gb2312.1980" . chinese-gb2312)
 	("gbk" . chinese-gbk)
-	("gb18030" . (unicode . nil))
+        ;; GB18030 needs the characters encoded by gb18030, but a
+        ;; gb18030 font doesn't necessarily support all of the GB18030
+        ;; characters.
+	("gb18030" . (gb18030 . unicode))
 	("jisx0208.1978" . japanese-jisx0208-1978)
 	("jisx0208" . japanese-jisx0208)
 	("jisx0201" . jisx0201)
@@ -216,6 +219,9 @@
 	(lydian #x10920)
 	(kharoshthi #x10A00)
 	(manichaean #x10AC0)
+        (hanifi-rohingya #x10D00)
+        (old-sogdian #x10F00)
+        (sogdian #x10F30)
 	(mahajani #x11150)
 	(sinhala-archaic-number #x111E1)
 	(khojki #x11200)
@@ -226,6 +232,7 @@
 	(siddham #x11580)
 	(modi #x11600)
 	(takri #x11680)
+        (dogra #x11800)
 	(warang-citi #x118A1)
         (zanabazar-square #x11A00)
         (soyombo #x11A50)
@@ -233,11 +240,14 @@
         (bhaiksuki #x11C00)
         (marchen #x11C72)
         (masaram-gondi #x11D00)
+        (gunjala-gondi #x11D60)
+        (makasar #x11EE0)
 	(cuneiform #x12000)
 	(cuneiform-numbers-and-punctuation #x12400)
 	(mro #x16A40)
 	(bassa-vah #x16AD0)
 	(pahawh-hmong #x16B11)
+        (medefaidrin #x16E40)
         (tangut #x17000)
         (tangut-components #x18800)
         (nushu #x1B170)
@@ -254,7 +264,7 @@
 
 (defvar otf-script-alist)
 
-;; The below was synchronized with the latest Feb 25, 2016 version of
+;; The below was synchronized with the latest Jul 23, 2017 version of
 ;; https://www.microsoft.com/typography/otspec/scripttags.htm.
 (setq otf-script-alist
       '((adlm . adlam)
@@ -309,6 +319,7 @@
 	(hano . hanunoo)
         (hatr . hatran)
 	(hebr . hebrew)
+        (hung . old-hungarian)
 	(phli . inscriptional-pahlavi)
 	(prti . inscriptional-parthian)
 	(java . javanese)
@@ -823,7 +834,7 @@
                     '("FreeMono" . "iso10646-1") nil 'prepend)
 
   ;; Since standard-fontset-spec on X uses fixed-medium font, which
-  ;; gets mapped to a iso8859-1 variant, we would like to prefer its
+  ;; gets mapped to an iso8859-1 variant, we would like to prefer its
   ;; iso10646-1 variant for symbols, where the coverage is known to be
   ;; good.
   (dolist (symbol-subgroup
@@ -1144,13 +1155,19 @@ given from DEFAULT-SPEC."
 	(setcar (cdr elt) spec)))
     fontlist))
 
+(defvar fontset-alias-alist)
+
 (defun fontset-name-p (fontset)
   "Return non-nil if FONTSET is valid as fontset name.
 A valid fontset name should conform to XLFD (X Logical Font Description)
-with \"fontset\" in `<CHARSET_REGISTRY>' field."
-  (and (string-match xlfd-tight-regexp fontset)
-       (string= (match-string (1+ xlfd-regexp-registry-subnum) fontset)
-		"fontset")))
+with \"fontset-SOMETHING\" in `<CHARSET_REGISTRY>' field.
+A fontset alias name recorded in `fontset-alias-alist' is also a valid
+fontset name."
+  (or (and (string-match xlfd-tight-regexp fontset)
+           (let ((registry
+                  (match-string (1+ xlfd-regexp-registry-subnum) fontset)))
+             (= 0 (string-match "\\`fontset-" registry))))
+      (consp (rassoc fontset fontset-alias-alist))))
 
 (declare-function fontset-list "fontset.c" ())
 

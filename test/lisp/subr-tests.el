@@ -1,6 +1,6 @@
 ;;; subr-tests.el --- Tests for subr.el
 
-;; Copyright (C) 2015-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2015-2018 Free Software Foundation, Inc.
 
 ;; Author: Oleh Krehel <ohwoeowho@gmail.com>,
 ;;         Nicolas Petton <nicolas@petton.fr>
@@ -26,7 +26,6 @@
 ;;
 
 ;;; Code:
-
 (require 'ert)
 (eval-when-compile (require 'cl-lib))
 
@@ -306,6 +305,60 @@ cf. Bug#25477."
                  "g0"))
   (should (eq (string-to-char (symbol-name (gensym))) ?g))
   (should (eq (string-to-char (symbol-name (gensym "X"))) ?X)))
+
+(ert-deftest subr-tests--proper-list-p ()
+  "Test `proper-list-p' behavior."
+  (dotimes (length 4)
+    ;; Proper and dotted lists.
+    (let ((list (make-list length 0)))
+      (should (= (proper-list-p list) length))
+      (should (not (proper-list-p (nconc list 0)))))
+    ;; Circular lists.
+    (dotimes (n (1+ length))
+      (let ((circle (make-list (1+ length) 0)))
+        (should (not (proper-list-p (nconc circle (nthcdr n circle))))))))
+  ;; Atoms.
+  (should (not (proper-list-p 0)))
+  (should (not (proper-list-p "")))
+  (should (not (proper-list-p [])))
+  (should (not (proper-list-p (make-bool-vector 0 nil))))
+  (should (not (proper-list-p (make-symbol "a")))))
+
+(ert-deftest subr-tests--assq-delete-all ()
+  "Test `assq-delete-all' behavior."
+  (cl-flet ((new-list-fn
+             ()
+             (list (cons 'a 1) (cons 'b 2) (cons 'c 3) 'd (cons "foo" "bar"))))
+    (should (equal (cdr (new-list-fn)) (assq-delete-all 'a (new-list-fn))))
+    (should (equal (new-list-fn) (assq-delete-all 'd (new-list-fn))))
+    (should (equal (new-list-fn) (assq-delete-all "foo" (new-list-fn))))))
+
+(ert-deftest subr-tests--assoc-delete-all ()
+  "Test `assoc-delete-all' behavior."
+  (cl-flet ((new-list-fn
+             ()
+             (list (cons 'a 1) (cons 'b 2) (cons 'c 3) 'd (cons "foo" "bar"))))
+    (should (equal (cdr (new-list-fn)) (assoc-delete-all 'a (new-list-fn))))
+    (should (equal (new-list-fn) (assoc-delete-all 'd (new-list-fn))))
+    (should (equal (butlast (new-list-fn))
+                   (assoc-delete-all "foo" (new-list-fn))))))
+
+(ert-deftest shell-quote-argument-%-on-w32 ()
+  "Quoting of `%' in w32 shells isn't perfect.
+See https://debbugs.gnu.org/cgi/bugreport.cgi?bug=19350."
+  :expected-result :failed
+  (skip-unless (and (fboundp 'w32-shell-dos-semantics)
+                    (w32-shell-dos-semantics)))
+  (let ((process-environment (append '("ca^=with-caret"
+                                       "ca=without-caret")
+                                     process-environment)))
+    ;; It actually results in
+    ;;    without-caret with-caret
+    (should (equal (shell-command-to-string
+                    (format "echo %s %s"
+                            "%ca%"
+                            (shell-quote-argument "%ca%")))
+                   "without-caret %ca%"))))
 
 (provide 'subr-tests)
 ;;; subr-tests.el ends here

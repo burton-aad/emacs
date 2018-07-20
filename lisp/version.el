@@ -1,6 +1,6 @@
 ;;; version.el --- record version number of Emacs
 
-;; Copyright (C) 1985, 1992, 1994-1995, 1999-2017 Free Software
+;; Copyright (C) 1985, 1992, 1994-1995, 1999-2018 Free Software
 ;; Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -99,14 +99,14 @@ to the system configuration; look at `system-configuration' instead."
 ;; We hope that this alias is easier for people to find.
 (defalias 'version 'emacs-version)
 
+(define-obsolete-variable-alias 'emacs-bzr-version
+                                'emacs-repository-version "24.4")
+
 ;; Set during dumping, this is a defvar so that it can be setq'd.
 (defvar emacs-repository-version nil
   "String giving the repository revision from which this Emacs was built.
 Value is nil if Emacs was not built from a repository checkout,
 or if we could not determine the revision.")
-
-(define-obsolete-variable-alias 'emacs-bzr-version
-                                'emacs-repository-version "24.4")
 
 (define-obsolete-function-alias 'emacs-bzr-get-version
                                 'emacs-repository-get-version "24.4")

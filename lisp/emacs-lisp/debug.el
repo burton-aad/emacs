@@ -1,6 +1,6 @@
 ;;; debug.el --- debuggers and related commands for Emacs  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1985-1986, 1994, 2001-2017 Free Software Foundation,
+;; Copyright (C) 1985-1986, 1994, 2001-2018 Free Software Foundation,
 ;; Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -27,6 +27,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'button)
 
 (defgroup debugger nil
@@ -144,9 +145,29 @@ You may call with no args, or you may pass nil as the first arg and
 any other args you like.  In that case, the list of args after the
 first will be printed into the backtrace buffer."
   (interactive)
-  (if inhibit-redisplay
-      ;; Don't really try to enter debugger within an eval from redisplay.
-      debugger-value
+  (cond
+   (inhibit-redisplay
+    ;; Don't really try to enter debugger within an eval from redisplay.
+    debugger-value)
+   ((and (eq t (framep (selected-frame)))
+         (equal "initial_terminal" (terminal-name)))
+    ;; We're in the initial-frame (where `message' just outputs to stdout) so
+    ;; there's no tty or GUI frame to display the backtrace and interact with
+    ;; it: just dump a backtrace to stdout.
+    ;; This happens for example while handling an error in code from
+    ;; early-init.el with --debug-init.
+    (message "Error: %S" args)
+    (let ((print-escape-newlines t)
+          (print-escape-control-characters t)
+          (print-level 8)
+          (print-length 50)
+          (skip t))             ;Skip the first frame (i.e. the `debug' frame)!
+      (mapbacktrace (lambda (_evald func args _flags)
+                      (if skip
+                          (setq skip nil)
+                        (message "  %S" (cons func args))))
+                    'debug)))
+   (t
     (unless noninteractive
       (message "Entering debugger..."))
     (let (debugger-value
@@ -271,7 +292,7 @@ first will be printed into the backtrace buffer."
 	  (with-timeout-unsuspend debugger-with-timeout-suspend)
 	  (set-match-data debugger-outer-match-data)))
       (setq debug-on-next-call debugger-step-after-exit)
-      debugger-value)))
+      debugger-value))))
 
 (defun debugger--print (obj &optional stream)
   (condition-case err
@@ -328,6 +349,7 @@ That buffer should be current already."
                  (backtrace-frames 'debug)))
         (print-escape-newlines t)
         (print-escape-control-characters t)
+        ;; If you increase print-level, add more depth in call_debugger.
         (print-level 8)
         (print-length 50)
         (pos (point)))

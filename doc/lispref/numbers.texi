@@ -1,6 +1,6 @@
 @c -*-texinfo-*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998-1999, 2001-2017 Free Software
+@c Copyright (C) 1990-1995, 1998-1999, 2001-2018 Free Software
 @c Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node Numbers
@@ -53,17 +53,15 @@ but many machines provide a wider range.  Many examples in this
 chapter assume the minimum integer width of 30 bits.
 @cindex overflow
 
-  The Lisp reader reads an integer as a sequence of digits with optional
-initial sign and optional final period.  An integer that is out of the
-Emacs range is treated as a floating-point number.
+  The Lisp reader reads an integer as a nonempty sequence
+of decimal digits with optional initial sign and optional
+final period.
 
 @example
  1               ; @r{The integer 1.}
  1.              ; @r{The integer 1.}
 +1               ; @r{Also the integer 1.}
 -1               ; @r{The integer @minus{}1.}
- 9000000000000000000
-                 ; @r{The floating-point number 9e18.}
  0               ; @r{The integer 0.}
 -0               ; @r{The integer 0.}
 @end example
@@ -74,14 +72,17 @@ Emacs range is treated as a floating-point number.
 @cindex hex numbers
 @cindex octal numbers
 @cindex reading numbers in hex, octal, and binary
-  The syntax for integers in bases other than 10 uses @samp{#}
-followed by a letter that specifies the radix: @samp{b} for binary,
-@samp{o} for octal, @samp{x} for hex, or @samp{@var{radix}r} to
-specify radix @var{radix}.  Case is not significant for the letter
-that specifies the radix.  Thus, @samp{#b@var{integer}} reads
+  The syntax for integers in bases other than 10 consists of @samp{#}
+followed by a radix indication followed by one or more digits.  The
+radix indications are @samp{b} for binary, @samp{o} for octal,
+@samp{x} for hex, and @samp{@var{radix}r} for radix @var{radix}.
+Thus, @samp{#b@var{integer}} reads
 @var{integer} in binary, and @samp{#@var{radix}r@var{integer}} reads
 @var{integer} in radix @var{radix}.  Allowed values of @var{radix} run
-from 2 to 36.  For example:
+from 2 to 36, and allowed digits are the first @var{radix} characters
+taken from @samp{0}--@samp{9}, @samp{A}--@samp{Z}.
+Letter case is ignored and there is no initial sign or final period.
+For example:
 
 @example
 #b101100 @result{} 44
@@ -89,6 +90,15 @@ from 2 to 36.  For example:
 #x2c @result{} 44
 #24r1k @result{} 44
 @end example
+
+  If an integer is outside the Emacs range, the Lisp reader ordinarily
+signals an overflow.  However, if a too-large plain integer ends in a
+period, the Lisp reader treats it as a floating-point number instead.
+This lets an Emacs Lisp program specify a large integer that is
+quietly approximated by a floating-point number on machines with
+limited word width.  For example, @samp{536870912.} is a
+floating-point number if Emacs integers are only 30 bits wide and is
+an integer otherwise.
 
   To understand how various functions work on integers, especially the
 bitwise operators (@pxref{Bitwise Operations}), it is often helpful to
@@ -213,7 +223,7 @@ least one digit after any decimal point in a floating-point number;
 @samp{1500.} is an integer, not a floating-point number.
 
   Emacs Lisp treats @code{-0.0} as numerically equal to ordinary zero
-with respect to @code{equal} and @code{=}.  This follows the
+with respect to numeric comparisons like @code{=}.  This follows the
 @acronym{IEEE} floating-point standard, which says @code{-0.0} and
 @code{0.0} are numerically equal even though other operations can
 distinguish them.
@@ -227,8 +237,20 @@ infinity and negative infinity as floating-point values.  It also
 provides for a class of values called NaN, or ``not a number'';
 numerical functions return such values in cases where there is no
 correct answer.  For example, @code{(/ 0.0 0.0)} returns a NaN@.
-Although NaN values carry a sign, for practical purposes there is no other
-significant difference between different NaN values in Emacs Lisp.
+A NaN is never numerically equal to any value, not even to itself.
+NaNs carry a sign and a significand, and non-numeric functions treat
+two NaNs as equal when their
+signs and significands agree.  Significands of NaNs are
+machine-dependent and are not directly visible to Emacs Lisp.
+
+  When NaNs and signed zeros are involved, non-numeric functions like
+@code{eql}, @code{equal}, @code{sxhash-eql}, @code{sxhash-equal} and
+@code{gethash} determine whether values are indistinguishable, not
+whether they are numerically equal.  For example, when @var{x} and
+@var{y} are the same NaN, @code{(equal x y)} returns @code{t} whereas
+@code{(= x y)} uses numeric comparison and returns @code{nil};
+conversely, @code{(equal 0.0 -0.0)} returns @code{nil} whereas
+@code{(= 0.0 -0.0)} returns @code{t}.
 
 Here are read syntaxes for these special floating-point values:
 
@@ -344,11 +366,15 @@ if so, @code{nil} otherwise.  The argument must be a number.
 @cindex comparing numbers
 
   To test numbers for numerical equality, you should normally use
-@code{=}, not @code{eq}.  There can be many distinct floating-point
-objects with the same numeric value.  If you use @code{eq} to
-compare them, then you test whether two values are the same
-@emph{object}.  By contrast, @code{=} compares only the numeric values
-of the objects.
+@code{=} instead of non-numeric comparison predicates like @code{eq},
+@code{eql} and @code{equal}.  Distinct floating-point objects can be
+numerically equal.  If you use @code{eq} to compare them, you test
+whether they are the same @emph{object}; if you use @code{eql} or
+@code{equal}, you test whether their values are
+@emph{indistinguishable}.  In contrast, @code{=} uses numeric
+comparison, and sometimes returns @code{t} when a non-numeric
+comparison would return @code{nil} and vice versa.  @xref{Float
+Basics}.
 
   In Emacs Lisp, each integer is a unique Lisp object.
 Therefore, @code{eq} is equivalent to @code{=} where integers are

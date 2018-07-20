@@ -1,6 +1,6 @@
 ;;; gnus-srvr.el --- virtual server support for Gnus
 
-;; Copyright (C) 1995-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1995-2018 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news
@@ -24,7 +24,7 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 (require 'gnus)
 (require 'gnus-start)
@@ -142,7 +142,7 @@ If nil, a faster, but more primitive, buffer is used instead."
        ["Offline" gnus-server-offline-server t]
        ["Deny" gnus-server-deny-server t]
        ["Toggle Cloud Sync for this server" gnus-server-toggle-cloud-server t]
-       ["Toggle Cloud Sync Host" gnus-server-toggle-cloud-method-server t]
+       ["Toggle Cloud Sync Host" gnus-server-set-cloud-method-server t]
        "---"
        ["Open All" gnus-server-open-all-servers t]
        ["Close All" gnus-server-close-all-servers t]
@@ -189,7 +189,7 @@ If nil, a faster, but more primitive, buffer is used instead."
     "z" gnus-server-compact-server
 
     "i" gnus-server-toggle-cloud-server
-    "I" gnus-server-toggle-cloud-method-server
+    "I" gnus-server-set-cloud-method-server
 
     "\C-c\C-i" gnus-info-find-node
     "\C-c\C-b" gnus-bug))
@@ -200,9 +200,6 @@ If nil, a faster, but more primitive, buffer is used instead."
     (t (:bold t)))
   "Face used for displaying AGENTIZED servers"
   :group 'gnus-server-visual)
-;; backward-compatibility alias
-(put 'gnus-server-agent-face 'face-alias 'gnus-server-agent)
-(put 'gnus-server-agent-face 'obsolete-face "22.1")
 
 (defface gnus-server-cloud
   '((((class color) (background light)) (:foreground "ForestGreen" :bold t))
@@ -224,9 +221,6 @@ If nil, a faster, but more primitive, buffer is used instead."
     (t (:bold t)))
   "Face used for displaying OPENED servers"
   :group 'gnus-server-visual)
-;; backward-compatibility alias
-(put 'gnus-server-opened-face 'face-alias 'gnus-server-opened)
-(put 'gnus-server-opened-face 'obsolete-face "22.1")
 
 (defface gnus-server-closed
   '((((class color) (background light)) (:foreground "Steel Blue" :italic t))
@@ -235,9 +229,6 @@ If nil, a faster, but more primitive, buffer is used instead."
     (t (:italic t)))
   "Face used for displaying CLOSED servers"
   :group 'gnus-server-visual)
-;; backward-compatibility alias
-(put 'gnus-server-closed-face 'face-alias 'gnus-server-closed)
-(put 'gnus-server-closed-face 'obsolete-face "22.1")
 
 (defface gnus-server-denied
   '((((class color) (background light)) (:foreground "Red" :bold t))
@@ -245,9 +236,6 @@ If nil, a faster, but more primitive, buffer is used instead."
     (t (:inverse-video t :bold t)))
   "Face used for displaying DENIED servers"
   :group 'gnus-server-visual)
-;; backward-compatibility alias
-(put 'gnus-server-denied-face 'face-alias 'gnus-server-denied)
-(put 'gnus-server-denied-face 'obsolete-face "22.1")
 
 (defface gnus-server-offline
   '((((class color) (background light)) (:foreground "Orange" :bold t))
@@ -255,9 +243,6 @@ If nil, a faster, but more primitive, buffer is used instead."
     (t (:inverse-video t :bold t)))
   "Face used for displaying OFFLINE servers"
   :group 'gnus-server-visual)
-;; backward-compatibility alias
-(put 'gnus-server-offline-face 'face-alias 'gnus-server-offline)
-(put 'gnus-server-offline-face 'obsolete-face "22.1")
 
 (defvar gnus-server-font-lock-keywords
   '(("(\\(agent\\))" 1 'gnus-server-agent)
@@ -823,12 +808,11 @@ claim them."
 	      (while (not (eobp))
 		(ignore-errors
 		  (push (cons
-			 (string-as-unibyte
-			  (buffer-substring
-			   (point)
-			   (progn
-			     (skip-chars-forward "^ \t")
-			     (point))))
+			 (buffer-substring
+			  (point)
+			  (progn
+			    (skip-chars-forward "^ \t")
+			    (point)))
 			 (let ((last (read cur)))
 			   (cons (read cur) last)))
 			groups))
@@ -836,19 +820,18 @@ claim them."
 	    (while (not (eobp))
 	      (ignore-errors
 		(push (cons
-		       (string-as-unibyte
-			(if (eq (char-after) ?\")
-			    (read cur)
-			  (let ((p (point)) (name ""))
-			    (skip-chars-forward "^ \t\\\\")
-			    (setq name (buffer-substring p (point)))
-			    (while (eq (char-after) ?\\)
-			      (setq p (1+ (point)))
-			      (forward-char 2)
-			      (skip-chars-forward "^ \t\\\\")
-			      (setq name (concat name (buffer-substring
-						       p (point)))))
-			    name)))
+		       (if (eq (char-after) ?\")
+			   (read cur)
+			 (let ((p (point)) (name ""))
+			   (skip-chars-forward "^ \t\\\\")
+			   (setq name (buffer-substring p (point)))
+			   (while (eq (char-after) ?\\)
+			     (setq p (1+ (point)))
+			     (forward-char 2)
+			     (skip-chars-forward "^ \t\\\\")
+			     (setq name (concat name (buffer-substring
+						      p (point)))))
+			   name))
 		       (let ((last (read cur)))
 			 (cons (read cur) last)))
 		      groups))
@@ -984,7 +967,7 @@ how new groups will be entered into the group buffer."
 		(not (eobp))
 		(gnus-browse-unsubscribe-group)
 		(zerop (gnus-browse-next-group ward)))
-      (decf arg))
+      (cl-decf arg))
     (gnus-group-position-point)
     (when (/= 0 arg)
       (gnus-message 7 "No more newsgroups"))
@@ -1129,7 +1112,7 @@ Requesting compaction of %s... (this may take a long time)"
 	(and original (gnus-kill-buffer original))))))
 
 (defun gnus-server-toggle-cloud-server ()
-  "Make the server under point be replicated in the Emacs Cloud."
+  "Toggle whether the server under point is replicated in the Emacs Cloud."
   (interactive)
   (let ((server (gnus-server-server-name)))
     (unless server
@@ -1149,7 +1132,7 @@ Requesting compaction of %s... (this may take a long time)"
 		      "Replication of %s in the cloud will stop")
 		  server)))
 
-(defun gnus-server-toggle-cloud-method-server ()
+(defun gnus-server-set-cloud-method-server ()
   "Set the server under point to host the Emacs Cloud."
   (interactive)
   (let ((server (gnus-server-server-name)))

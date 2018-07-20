@@ -1,6 +1,6 @@
 /* Set file access and modification times.
 
-   Copyright (C) 2003-2017 Free Software Foundation, Inc.
+   Copyright (C) 2003-2018 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the
@@ -39,8 +39,7 @@
    GNU Emacs, which arranges for this in some other way and which
    defines WIN32_LEAN_AND_MEAN itself.  */
 
-#if ((defined _WIN32 || defined __WIN32__) \
-     && ! defined __CYGWIN__ && ! defined EMACS_CONFIGURATION)
+#if defined _WIN32 && ! defined __CYGWIN__ && ! defined EMACS_CONFIGURATION
 # define USE_SETFILETIME
 # define WIN32_LEAN_AND_MEAN
 # include <windows.h>

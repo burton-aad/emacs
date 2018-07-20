@@ -1,6 +1,6 @@
 ;;; latin-pre.el --- Quail packages for inputting various European characters  -*-coding: utf-8;-*-
 
-;; Copyright (C) 1997-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1997-2018 Free Software Foundation, Inc.
 ;; Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
 ;;   2006, 2007, 2008, 2009, 2010, 2011
 ;;   National Institute of Advanced Industrial Science and Technology (AIST)
@@ -361,13 +361,14 @@ Key translation rules are:
  "german-prefix" "German" "DE>" t
  "German (Deutsch) input method with prefix modifiers
 Key translation rules are:
- \"A -> Ä ->   \"O -> Ö   \"U -> Ü   \"s -> ß
+ \"A -> Ä ->   \"O -> Ö   \"S -> ẞ   \"U -> Ü   \"s -> ß
 " nil t nil nil nil nil nil nil nil nil t)
 
 (quail-define-rules
  ("\"A" ?Ä)
  ("\"O" ?Ö)
  ("\"U" ?Ü)
+ ("\"S" ?ẞ)
  ("\"a" ?ä)
  ("\"o" ?ö)
  ("\"u" ?ü)
@@ -1175,6 +1176,7 @@ of characters from a single Latin-N charset.
  ("\"E" ?Ë)
  ("\"I" ?Ï)
  ("\"O" ?Ö)
+ ("\"S" ?ẞ)
  ("\"U" ?Ü)
  ("\"W" ?Ẅ)
  ("\"Y" ?Ÿ)

@@ -1,5 +1,5 @@
 /* Window definitions for GNU Emacs.
-   Copyright (C) 1985-1986, 1993, 1995, 1997-2017 Free Software
+   Copyright (C) 1985-1986, 1993, 1995, 1997-2018 Free Software
    Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -177,6 +177,9 @@ struct window
 
     /* An alist with parameters.  */
     Lisp_Object window_parameters;
+
+    /* The help echo text for this window.  Qnil if there's none.  */
+    Lisp_Object mode_line_help_echo;
 
     /* No Lisp data may follow below this point without changing
        mark_object in alloc.c.  The member current_matrix must be the
@@ -370,7 +373,8 @@ struct window
     bool_bf must_be_updated_p : 1;
 
     /* Flag indicating that this window is not a real one.
-       Currently only used for menu bar windows of frames.  */
+       Currently only used for menu bar windows, for tool bar windows,
+       and for tooltips.  */
     bool_bf pseudo_window_p : 1;
 
     /* True means fringes are drawn outside display margins.
@@ -414,7 +418,7 @@ INLINE struct window *
 XWINDOW (Lisp_Object a)
 {
   eassert (WINDOWP (a));
-  return XUNTAG (a, Lisp_Vectorlike);
+  return XUNTAG (a, Lisp_Vectorlike, struct window);
 }
 
 /* Most code should use these functions to set Lisp fields in struct
@@ -441,6 +445,12 @@ INLINE void
 wset_redisplay_end_trigger (struct window *w, Lisp_Object val)
 {
   w->redisplay_end_trigger = val;
+}
+
+INLINE void
+wset_mode_line_help_echo (struct window *w, Lisp_Object val)
+{
+  w->mode_line_help_echo = val;
 }
 
 INLINE void

@@ -1,6 +1,6 @@
 ;;; bytecomp.el --- compilation of Lisp code into byte code -*- lexical-binding: t -*-
 
-;; Copyright (C) 1985-1987, 1992, 1994, 1998, 2000-2017 Free Software
+;; Copyright (C) 1985-1987, 1992, 1994, 1998, 2000-2018 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Jamie Zawinski <jwz@lucid.com>
@@ -124,17 +124,10 @@
 (require 'backquote)
 (require 'macroexp)
 (require 'cconv)
-(require 'cl-lib)
-
-;; During bootstrap, cl-loaddefs.el is not created yet, so loading cl-lib
-;; doesn't setup autoloads for things like cl-every, which is why we have to
-;; require cl-extra as well (bug#18804).
-(or (fboundp 'cl-every)
-    (require 'cl-extra))
-
-(or (fboundp 'defsubst)
-    ;; This really ought to be loaded already!
-    (load "byte-run"))
+;; Refrain from using cl-lib at run-time here, since it otherwise prevents
+;; us from emitting warnings when compiling files which use cl-lib without
+;; requiring it! (bug#30635)
+(eval-when-compile (require 'cl-lib))
 
 ;; The feature of compiling in a specific target Emacs version
 ;; has been turned off because compile time options are a bad idea.
@@ -236,6 +229,7 @@ This includes variable references and calls to functions such as `car'."
 
 (defcustom byte-compile-cond-use-jump-table t
   "Compile `cond' clauses to a jump table implementation (using a hash-table)."
+  :version "26.1"
   :group 'bytecomp
   :type 'boolean)
 
@@ -294,6 +288,11 @@ The information is logged to `byte-compile-log-buffer'."
   "If true, the byte-compiler reports warnings with `error'."
   :group 'bytecomp
   :type 'boolean)
+;; This needs to be autoloaded because it needs to be available to
+;; Emacs before the byte compiler is loaded, otherwise Emacs will not
+;; know that this variable is marked as safe until it is too late.
+;; (See https://lists.gnu.org/archive/html/emacs-devel/2018-01/msg00261.html )
+;;;###autoload(put 'byte-compile-error-on-warn 'safe-local-variable 'booleanp)
 
 (defconst byte-compile-warning-types
   '(redefine callargs free-vars unresolved
@@ -1252,7 +1251,7 @@ function directly; use `byte-compile-warn' or
 (defun byte-compile-report-error (error-info &optional fill)
   "Report Lisp error in compilation.
 ERROR-INFO is the error data, in the form of either (ERROR-SYMBOL . DATA)
-or STRING.  If FILL is non-nil, set ‘warning-fill-prefix’ to four spaces
+or STRING.  If FILL is non-nil, set `warning-fill-prefix' to four spaces
 when printing the error message."
   (setq byte-compiler-error-flag t)
   (byte-compile-log-warning
@@ -1932,7 +1931,7 @@ The value is non-nil if there were no errors, nil if errors."
 		       ;; parallel bootstrap), it does not risk getting a
 		       ;; half-finished file.  (Bug#4196)
 		       (tempfile
-                        (make-temp-file (file-name-nondirectory target-file)))
+			(make-temp-file (expand-file-name target-file)))
 		       (default-modes (default-file-modes))
 		       (temp-modes (logand default-modes #o600))
 		       (desired-modes (logand default-modes #o666))
@@ -2063,14 +2062,8 @@ With argument ARG, insert value in current buffer after the form."
 		 (not (eobp)))
 	  (setq byte-compile-read-position (point)
 		byte-compile-last-position byte-compile-read-position)
-	  (let* ((lread--old-style-backquotes nil)
-                 (lread--unescaped-character-literals nil)
+	  (let* ((lread--unescaped-character-literals nil)
                  (form (read inbuffer)))
-            ;; Warn about the use of old-style backquotes.
-            (when lread--old-style-backquotes
-              (byte-compile-warn "!! The file uses old-style backquotes !!
-This functionality has been obsolete for more than 10 years already
-and will be removed soon.  See (elisp)Backquote in the manual."))
             (when lread--unescaped-character-literals
               (byte-compile-warn
                "unescaped character literals %s detected!"
@@ -2433,6 +2426,16 @@ list that represents a doc string reference.
 (defun byte-compile-file-form-defvar-function (form)
   (pcase-let (((or `',name (let name nil)) (nth 1 form)))
     (if name (byte-compile--declare-var name)))
+  ;; Variable aliases are better declared before the corresponding variable,
+  ;; since it makes it more likely that only one of the two vars has a value
+  ;; before the `defvaralias' gets executed, which avoids the need to
+  ;; merge values.
+  (pcase form
+    (`(defvaralias ,_ ',newname . ,_)
+     (when (memq newname byte-compile-bound-variables)
+       (if (byte-compile-warning-enabled-p 'suspicious)
+           (byte-compile-warn
+            "Alias for `%S' should be declared before its referent" newname)))))
   (byte-compile-keep-pending form))
 
 (put 'custom-declare-variable 'byte-hunk-handler
@@ -2491,6 +2494,12 @@ list that represents a doc string reference.
   (let (byte-compile-warnings)
     (mapc 'byte-compile-file-form (cdr form))
     nil))
+
+;; Automatically evaluate define-obsolete-function-alias etc at top-level.
+(put 'make-obsolete 'byte-hunk-handler 'byte-compile-file-form-make-obsolete)
+(defun byte-compile-file-form-make-obsolete (form)
+  (prog1 (byte-compile-keep-pending form)
+    (apply 'make-obsolete (mapcar 'eval (cdr form)))))
 
 ;; This handler is not necessary, but it makes the output from dont-compile
 ;; and similar macros cleaner.
@@ -2738,15 +2747,12 @@ If FORM is a lambda or a macro, byte-compile it as a function."
 		   (macroexp--const-symbol-p arg t))
 	       (error "Invalid lambda variable %s" arg))
 	      ((eq arg '&rest)
-	       (unless (cdr list)
-		 (error "&rest without variable name"))
 	       (when (cddr list)
-		 (error "Garbage following &rest VAR in lambda-list")))
+		 (error "Garbage following &rest VAR in lambda-list"))
+               (when (memq (cadr list) '(&optional &rest))
+                 (error "%s following &rest in lambda-list" (cadr list))))
 	      ((eq arg '&optional)
-	       (when (or (null (cdr list))
-                         (memq (cadr list) '(&optional &rest)))
-		 (error "Variable name missing after &optional"))
-               (when (memq '&optional (cddr list))
+               (when (memq '&optional (cdr list))
                  (error "Duplicate &optional")))
 	      ((memq arg vars)
 	       (byte-compile-warn "repeated variable %s in lambda-list" arg))
@@ -2839,9 +2845,10 @@ for symbols generated by the byte compiler itself."
 		   (setq form (cdr form)))
 		 (setq form (car form)))
 	       (if (and (eq (car-safe form) 'list)
-                        ;; The spec is evalled in callint.c in dynamic-scoping
-                        ;; mode, so just leaving the form unchanged would mean
-                        ;; it won't be eval'd in the right mode.
+                        ;; For code using lexical-binding, form is not
+                        ;; valid lisp, but rather an intermediate form
+                        ;; which may include "calls" to
+                        ;; internal-make-closure (Bug#29988).
                         (not lexical-binding))
 		   nil
 		 (setq int `(interactive ,newform)))))
@@ -3112,7 +3119,13 @@ for symbols generated by the byte compiler itself."
              (when (assq var byte-compile-lexical-variables)
                (byte-compile-report-error
                 (format-message "%s cannot use lexical var `%s'" fn var))))))
-        (when (macroexp--const-symbol-p fn)
+        ;; Warn about using obsolete hooks.
+        (if (memq fn '(add-hook remove-hook))
+            (let ((hook (car-safe (cdr form))))
+              (if (eq (car-safe hook) 'quote)
+                  (byte-compile-check-variable (cadr hook) nil))))
+        (when (and (byte-compile-warning-enabled-p 'suspicious)
+                   (macroexp--const-symbol-p fn))
           (byte-compile-warn "`%s' called as a function" fn))
 	(when (and (byte-compile-warning-enabled-p 'interactive-only)
 		   interactive-only)
@@ -3569,7 +3582,8 @@ These implicitly `and' together a bunch of two-arg bytecodes."
     (cond
      ((< l 3) (byte-compile-form `(progn ,(nth 1 form) t)))
      ((= l 3) (byte-compile-two-args form))
-     ((cl-every #'macroexp-copyable-p (nthcdr 2 form))
+     ;; Don't use `cl-every' here (see comment where we require cl-lib).
+     ((not (memq nil (mapcar #'macroexp-copyable-p (nthcdr 2 form))))
       (byte-compile-form `(and (,(car form) ,(nth 1 form) ,(nth 2 form))
 			       (,(car form) ,@(nthcdr 2 form)))))
      (t (byte-compile-normal-call form)))))
@@ -4078,6 +4092,8 @@ that suppresses all warnings during execution of BODY."
    (and (symbolp obj1) (macroexp-const-p obj2) (cons obj1 obj2))
    (and (symbolp obj2) (macroexp-const-p obj1) (cons obj2 obj1))))
 
+(defconst byte-compile--default-val (cons nil nil) "A unique object.")
+
 (defun byte-compile-cond-jump-table-info (clauses)
   "If CLAUSES is a `cond' form where:
 The condition for each clause is of the form (TEST VAR VALUE).
@@ -4110,7 +4126,9 @@ Return a list of the form ((TEST . VAR)  ((VALUE BODY) ...))"
                         (not (assq obj2 cases)))
                    (push (list (if (consp obj2) (eval obj2) obj2) body) cases)
                  (if (and (macroexp-const-p condition) condition)
-                     (progn (push (list 'default (or body `(,condition))) cases)
+		     (progn (push (list byte-compile--default-val
+					(or body `(,condition)))
+				  cases)
                             (throw 'break t))
                    (setq ok nil)
                    (throw 'break nil))))))
@@ -4125,11 +4143,12 @@ Return a list of the form ((TEST . VAR)  ((VALUE BODY) ...))"
     (when (and cases (not (= (length cases) 1)))
       ;; TODO: Once :linear-search is implemented for `make-hash-table'
       ;; set it to `t' for cond forms with a small number of cases.
-      (setq jump-table (make-hash-table :test test
-                                        :purecopy t
-                                        :size (if (assq 'default cases)
-                                                  (1- (length cases))
-                                                (length cases)))
+      (setq jump-table (make-hash-table
+			:test test
+			:purecopy t
+			:size (if (assq byte-compile--default-val cases)
+				  (1- (length cases))
+				(length cases)))
             default-tag (byte-compile-make-tag)
             donetag (byte-compile-make-tag))
       ;; The structure of byte-switch code:
@@ -4157,13 +4176,14 @@ Return a list of the form ((TEST . VAR)  ((VALUE BODY) ...))"
       ;; to be non-nil for generating tags for all cases. Since
       ;; `byte-compile-depth' will increase by at most 1 after compiling
       ;; all of the clause (which is further enforced by cl-assert below)
-      ;; it should be safe to preserve it's value.
+      ;; it should be safe to preserve its value.
       (let ((byte-compile-depth byte-compile-depth))
         (byte-compile-goto 'byte-goto default-tag))
 
-      (when (assq 'default cases)
-        (setq default-case (cadr (assq 'default cases))
-              cases (butlast cases 1)))
+      (let ((default-match (assq byte-compile--default-val cases)))
+        (when default-match
+	  (setq default-case (cadr default-match)
+                cases (butlast cases))))
 
       (dolist (case cases)
         (setq tag (byte-compile-make-tag)
@@ -4175,7 +4195,7 @@ Return a list of the form ((TEST . VAR)  ((VALUE BODY) ...))"
         (let ((byte-compile-depth byte-compile-depth)
               (init-depth byte-compile-depth))
           ;; Since `byte-compile-body' might increase `byte-compile-depth'
-          ;; by 1, not preserving it's value will cause it to potentially
+          ;; by 1, not preserving its value will cause it to potentially
           ;; increase by one for every clause body compiled, causing
           ;; depth/tag conflicts or violating asserts down the road.
           ;; To make sure `byte-compile-body' itself doesn't violate this,

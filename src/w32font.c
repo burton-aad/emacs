@@ -1,5 +1,5 @@
 /* Font backend for the Microsoft Windows API.
-   Copyright (C) 2007-2017 Free Software Foundation, Inc.
+   Copyright (C) 2007-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -718,7 +718,7 @@ w32font_draw (struct glyph_string *s, int from, int to,
 }
 
 /* w32 implementation of free_entity for font backend.
-   Optional (if FONT_EXTRA_INDEX is not Lisp_Save_Value).
+   Optional.
    Free FONT_EXTRA_INDEX field of FONT_ENTITY.
 static void
 w32font_free_entity (Lisp_Object entity);

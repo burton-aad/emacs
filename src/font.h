@@ -1,5 +1,5 @@
 /* font.h -- Interface definition for font handling.
-   Copyright (C) 2006-2017 Free Software Foundation, Inc.
+   Copyright (C) 2006-2018 Free Software Foundation, Inc.
    Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
      National Institute of Advanced Industrial Science and Technology (AIST)
      Registration Number H13PRO009
@@ -494,42 +494,42 @@ INLINE struct font_spec *
 XFONT_SPEC (Lisp_Object p)
 {
   eassert (FONT_SPEC_P (p));
-  return XUNTAG (p, Lisp_Vectorlike);
+  return XUNTAG (p, Lisp_Vectorlike, struct font_spec);
 }
 
 INLINE struct font_spec *
 GC_XFONT_SPEC (Lisp_Object p)
 {
   eassert (GC_FONT_SPEC_P (p));
-  return XUNTAG (p, Lisp_Vectorlike);
+  return XUNTAG (p, Lisp_Vectorlike, struct font_spec);
 }
 
 INLINE struct font_entity *
 XFONT_ENTITY (Lisp_Object p)
 {
   eassert (FONT_ENTITY_P (p));
-  return XUNTAG (p, Lisp_Vectorlike);
+  return XUNTAG (p, Lisp_Vectorlike, struct font_entity);
 }
 
 INLINE struct font_entity *
 GC_XFONT_ENTITY (Lisp_Object p)
 {
   eassert (GC_FONT_ENTITY_P (p));
-  return XUNTAG (p, Lisp_Vectorlike);
+  return XUNTAG (p, Lisp_Vectorlike, struct font_entity);
 }
 
 INLINE struct font *
 XFONT_OBJECT (Lisp_Object p)
 {
   eassert (FONT_OBJECT_P (p));
-  return XUNTAG (p, Lisp_Vectorlike);
+  return XUNTAG (p, Lisp_Vectorlike, struct font);
 }
 
 INLINE struct font *
 GC_XFONT_OBJECT (Lisp_Object p)
 {
   eassert (GC_FONT_OBJECT_P (p));
-  return XUNTAG (p, Lisp_Vectorlike);
+  return XUNTAG (p, Lisp_Vectorlike, struct font);
 }
 
 #define XSETFONT(a, b) (XSETPSEUDOVECTOR (a, b, PVEC_FONT))
@@ -613,7 +613,7 @@ struct font_driver
      (symbols).  */
   Lisp_Object (*list_family) (struct frame *f);
 
-  /* Optional (if FONT_EXTRA_INDEX is not Lisp_Save_Value).
+  /* Optional.
      Free FONT_EXTRA_INDEX field of FONT_ENTITY.  */
   void (*free_entity) (Lisp_Object font_entity);
 
@@ -944,6 +944,22 @@ extern void font_deferred_log (const char *, Lisp_Object, Lisp_Object);
     if (! EQ (Vfont_log, Qt))				\
       font_deferred_log ((ACTION), (ARG), (RESULT));	\
   } while (false)
+
+/* FIXME: This is for use in functions that can be called while
+   garbage-collecting, but which assume that Lisp data structures are
+   properly-formed.  This invalid assumption can lead to core dumps
+   (Bug#20890).  */
+INLINE bool
+font_data_structures_may_be_ill_formed (void)
+{
+#ifdef USE_CAIRO
+  /* Although this works around Bug#20890, it is probably not the
+     right thing to do.  */
+  return gc_in_progress;
+#else
+  return false;
+#endif
+}
 
 INLINE_HEADER_END
 

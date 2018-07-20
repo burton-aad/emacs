@@ -1,6 +1,6 @@
 ;;; tramp-compat.el --- Tramp compatibility functions  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2007-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2018 Free Software Foundation, Inc.
 
 ;; Author: Michael Albinus <michael.albinus@gmx.de>
 ;; Keywords: comm, processes
@@ -40,7 +40,6 @@
 (require 'timer)
 (require 'ucs-normalize)
 
-(require 'trampver)
 (require 'tramp-loaddefs)
 
 ;; For not existing functions, obsolete functions, or functions with a
@@ -97,13 +96,6 @@ Add the extension of F, if existing."
                                     (concat "^" (regexp-quote comm))
                                     process-name))))
 	      (setq result t)))))))))
-
-;; `user-error' has appeared in Emacs 24.3.
-(defsubst tramp-compat-user-error (vec-or-proc format &rest args)
-  "Signal a pilot error."
-  (apply
-   'tramp-error vec-or-proc
-   (if (fboundp 'user-error) 'user-error 'error) format args))
 
 ;; `default-toplevel-value' has been declared in Emacs 24.4.
 (unless (fboundp 'default-toplevel-value)
@@ -190,11 +182,6 @@ This is a string of ten letters or dashes as in ls -l."
   (if (get 'file-missing 'error-conditions) 'file-missing 'file-error)
   "The error symbol for the `file-missing' error.")
 
-(add-hook 'tramp-unload-hook
-	  (lambda ()
-	    (unload-feature 'tramp-loaddefs 'force)
-	    (unload-feature 'tramp-compat 'force)))
-
 ;; `file-name-quoted-p', `file-name-quote' and `file-name-unquote' are
 ;; introduced in Emacs 26.
 (eval-and-compile
@@ -210,8 +197,10 @@ If NAME is a remote file name, check the local part of NAME."
     (defsubst tramp-compat-file-name-quote (name)
       "Add the quotation prefix \"/:\" to file NAME.
 If NAME is a remote file name, the local part of NAME is quoted."
-      (concat
-       (file-remote-p name) "/:" (or (file-remote-p name 'localname) name))))
+      (if (tramp-compat-file-name-quoted-p name)
+	  name
+	(concat
+	 (file-remote-p name) "/:" (or (file-remote-p name 'localname) name)))))
 
   (if (fboundp 'file-name-unquote)
       (defalias 'tramp-compat-file-name-unquote 'file-name-unquote)
@@ -240,6 +229,28 @@ If NAME is a remote file name, the local part of NAME is unquoted."
   (if (fboundp 'cl-struct-slot-info)
       `(cdr (mapcar 'car (cl-struct-slot-info 'tramp-file-name)))
     `(cdr (mapcar 'car (get 'tramp-file-name 'cl-struct-slots)))))
+
+;; The signature of `tramp-make-tramp-file-name' has been changed.
+;; Therefore, we cannot us `url-tramp-convert-url-to-tramp' prior
+;; Emacs 26.1.  We use `temporary-file-directory' as indicator.
+(defconst tramp-compat-use-url-tramp-p (fboundp 'temporary-file-directory)
+  "Whether to use url-tramp.el.")
+
+;; `exec-path' is new in Emacs 27.1.
+(eval-and-compile
+  (if (fboundp 'exec-path)
+      (defalias 'tramp-compat-exec-path 'exec-path)
+    (defun tramp-compat-exec-path ()
+      "List of directories to search programs to run in remote subprocesses."
+      (let ((handler (find-file-name-handler default-directory 'exec-path)))
+	(if handler
+	    (funcall handler 'exec-path)
+	  exec-path)))))
+
+(add-hook 'tramp-unload-hook
+	  (lambda ()
+	    (unload-feature 'tramp-loaddefs 'force)
+	    (unload-feature 'tramp-compat 'force)))
 
 (provide 'tramp-compat)
 

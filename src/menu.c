@@ -1,6 +1,6 @@
 /* Platform-independent code for terminal communications.
 
-Copyright (C) 1986, 1988, 1993-1994, 1996, 1999-2017 Free Software
+Copyright (C) 1986, 1988, 1993-1994, 1996, 1999-2018 Free Software
 Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -647,7 +647,7 @@ digest_single_submenu (int start, int end, bool top_level_items)
   i = start;
   while (i < end)
     {
-      if (EQ (AREF (menu_items, i), Qnil))
+      if (NILP (AREF (menu_items, i)))
 	{
 	  submenu_stack[submenu_depth++] = save_wv;
 	  save_wv = prev_wv;
@@ -900,7 +900,7 @@ find_and_call_menu_selection (struct frame *f, int menu_bar_items_used,
 
   while (i < menu_bar_items_used)
     {
-      if (EQ (AREF (vector, i), Qnil))
+      if (NILP (AREF (vector, i)))
 	{
 	  subprefix_stack[submenu_depth++] = prefix;
 	  prefix = entry;
@@ -985,7 +985,7 @@ find_and_return_menu_selection (struct frame *f, bool keymaps, void *client_data
 
   while (i < menu_items_used)
     {
-      if (EQ (AREF (menu_items, i), Qnil))
+      if (NILP (AREF (menu_items, i)))
         {
           subprefix_stack[submenu_depth++] = prefix;
           prefix = entry;
@@ -1152,7 +1152,7 @@ x_popup_menu_1 (Lisp_Object position, Lisp_Object menu)
 	else
 	  {
 	    menuflags |= MENU_FOR_CLICK;
-	    tem = Fcar (Fcdr (position));  /* EVENT_START (position) */
+	    tem = Fcar (XCDR (position));    /* EVENT_START (position) */
 	    window = Fcar (tem);	     /* POSN_WINDOW (tem) */
 	    tem2 = Fcar (Fcdr (tem));	     /* POSN_POSN (tem) */
 	    /* The MENU_KBD_NAVIGATION field is set when the menu
@@ -1168,7 +1168,7 @@ x_popup_menu_1 (Lisp_Object position, Lisp_Object menu)
 	       event.  */
 	    if (!EQ (POSN_POSN (last_nonmenu_event),
 		     POSN_POSN (position))
-		&& CONSP (tem2) && EQ (Fcar (tem2), Qmenu_bar))
+		&& CONSP (tem2) && EQ (XCAR (tem2), Qmenu_bar))
 	      menuflags |= MENU_KBD_NAVIGATION;
 	    tem = Fcar (Fcdr (Fcdr (tem))); /* POSN_WINDOW_POSN (tem) */
 	    x = Fcar (tem);

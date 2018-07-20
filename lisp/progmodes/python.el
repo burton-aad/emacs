@@ -1,10 +1,10 @@
 ;;; python.el --- Python's flying circus support for Emacs -*- lexical-binding: t -*-
 
-;; Copyright (C) 2003-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2018 Free Software Foundation, Inc.
 
 ;; Author: Fabián E. Gallina <fgallina@gnu.org>
 ;; URL: https://github.com/fgallina/python.el
-;; Version: 0.25.2
+;; Version: 0.26.1
 ;; Package-Requires: ((emacs "24.1") (cl-lib "1.0"))
 ;; Maintainer: emacs-devel@gnu.org
 ;; Created: Jul 2010
@@ -91,9 +91,9 @@
 ;; is as follows (of course you need to modify the paths according to
 ;; your system):
 
-;; (setq python-shell-interpreter "C:\\Python27\\python.exe"
+;; (setq python-shell-interpreter "C:/Python27/python.exe"
 ;;       python-shell-interpreter-args
-;;       "-i C:\\Python27\\Scripts\\ipython-script.py")
+;;       "-i C:/Python27/Scripts/ipython-script.py")
 
 ;; Missing or delayed output used to happen due to differences between
 ;; Operating Systems' pipe buffering (e.g. CPython 3.3.4 in Windows 7.
@@ -287,13 +287,20 @@
 ;;; 24.x Compat
 
 
-(unless (fboundp 'prog-widen)
-  (defun prog-widen ()
-    (widen)))
+(eval-and-compile
+  (unless (fboundp 'prog-first-column)
+    (defun prog-first-column ()
+      0))
+  (unless (fboundp 'file-local-name)
+    (defun file-local-name (file)
+      "Return the local name component of FILE.
+It returns a file name which can be used directly as argument of
+`process-file', `start-file-process', or `shell-command'."
+      (or (file-remote-p file 'localname) file))))
 
-(unless (fboundp 'prog-first-column)
-  (defun prog-first-column ()
-    0))
+;; In Emacs 24.3 and earlier, `define-derived-mode' does not define
+;; the hook variable, it only puts documentation on the symbol.
+(defvar inferior-python-mode-hook)
 
 
 ;;; Bindings
@@ -426,7 +433,7 @@
       (string-delimiter . ,(rx (and
                                 ;; Match even number of backslashes.
                                 (or (not (any ?\\ ?\' ?\")) point
-                                    ;; Quotes might be preceded by a escaped quote.
+                                    ;; Quotes might be preceded by an escaped quote.
                                     (and (or (not (any ?\\)) point) ?\\
                                          (* ?\\ ?\\) (any ?\' ?\")))
                                 (* ?\\ ?\\)
@@ -519,9 +526,19 @@ The type returned can be `comment', `string' or `paren'."
         font-lock-string-face)
     font-lock-comment-face))
 
-(defvar python-font-lock-keywords
-  ;; Keywords
-  `(,(rx symbol-start
+(defvar python-font-lock-keywords-level-1
+  `((,(rx symbol-start "def" (1+ space) (group (1+ (or word ?_))))
+     (1 font-lock-function-name-face))
+    (,(rx symbol-start "class" (1+ space) (group (1+ (or word ?_))))
+     (1 font-lock-type-face)))
+  "Font lock keywords to use in python-mode for level 1 decoration.
+
+This is the minimum decoration level, including function and
+class declarations.")
+
+(defvar python-font-lock-keywords-level-2
+  `(,@python-font-lock-keywords-level-1
+    ,(rx symbol-start
          (or
           "and" "del" "from" "not" "while" "as" "elif" "global" "or" "with"
           "assert" "else" "if" "pass" "yield" "break" "except" "import" "class"
@@ -541,12 +558,35 @@ The type returned can be `comment', `string' or `paren'."
           ;; Extra:
           "self")
          symbol-end)
-    ;; functions
-    (,(rx symbol-start "def" (1+ space) (group (1+ (or word ?_))))
-     (1 font-lock-function-name-face))
-    ;; classes
-    (,(rx symbol-start "class" (1+ space) (group (1+ (or word ?_))))
-     (1 font-lock-type-face))
+    ;; Builtins
+    (,(rx symbol-start
+          (or
+           "abs" "all" "any" "bin" "bool" "callable" "chr" "classmethod"
+           "compile" "complex" "delattr" "dict" "dir" "divmod" "enumerate"
+           "eval" "filter" "float" "format" "frozenset" "getattr" "globals"
+           "hasattr" "hash" "help" "hex" "id" "input" "int" "isinstance"
+           "issubclass" "iter" "len" "list" "locals" "map" "max" "memoryview"
+           "min" "next" "object" "oct" "open" "ord" "pow" "print" "property"
+           "range" "repr" "reversed" "round" "set" "setattr" "slice" "sorted"
+           "staticmethod" "str" "sum" "super" "tuple" "type" "vars" "zip"
+           "__import__"
+           ;; Python 2:
+           "basestring" "cmp" "execfile" "file" "long" "raw_input" "reduce"
+           "reload" "unichr" "unicode" "xrange" "apply" "buffer" "coerce"
+           "intern"
+           ;; Python 3:
+           "ascii" "bytearray" "bytes" "exec"
+           ;; Extra:
+           "__all__" "__doc__" "__name__" "__package__")
+          symbol-end) . font-lock-builtin-face))
+  "Font lock keywords to use in python-mode for level 2 decoration.
+
+This is the medium decoration level, including everything in
+`python-font-lock-keywords-level-1', as well as keywords and
+builtins.")
+
+(defvar python-font-lock-keywords-maximum-decoration
+  `(,@python-font-lock-keywords-level-2
     ;; Constants
     (,(rx symbol-start
           (or
@@ -589,27 +629,6 @@ The type returned can be `comment', `string' or `paren'."
            "VMSError" "WindowsError"
            )
           symbol-end) . font-lock-type-face)
-    ;; Builtins
-    (,(rx symbol-start
-          (or
-           "abs" "all" "any" "bin" "bool" "callable" "chr" "classmethod"
-           "compile" "complex" "delattr" "dict" "dir" "divmod" "enumerate"
-           "eval" "filter" "float" "format" "frozenset" "getattr" "globals"
-           "hasattr" "hash" "help" "hex" "id" "input" "int" "isinstance"
-           "issubclass" "iter" "len" "list" "locals" "map" "max" "memoryview"
-           "min" "next" "object" "oct" "open" "ord" "pow" "print" "property"
-           "range" "repr" "reversed" "round" "set" "setattr" "slice" "sorted"
-           "staticmethod" "str" "sum" "super" "tuple" "type" "vars" "zip"
-           "__import__"
-           ;; Python 2:
-           "basestring" "cmp" "execfile" "file" "long" "raw_input" "reduce"
-           "reload" "unichr" "unicode" "xrange" "apply" "buffer" "coerce"
-           "intern"
-           ;; Python 3:
-           "ascii" "bytearray" "bytes" "exec"
-           ;; Extra:
-           "__all__" "__doc__" "__name__" "__package__")
-          symbol-end) . font-lock-builtin-face)
     ;; assignments
     ;; support for a = b = c = 5
     (,(lambda (limit)
@@ -633,21 +652,40 @@ The type returned can be `comment', `string' or `paren'."
                       (goto-char (match-end 1))
                       (python-syntax-context 'paren)))
           res))
-     (1 font-lock-variable-name-face nil nil))))
+     (1 font-lock-variable-name-face nil nil)))
+  "Font lock keywords to use in python-mode for maximum decoration.
+
+This decoration level includes everything in
+`python-font-lock-keywords-level-2', as well as constants,
+decorators, exceptions, and assignments.")
+
+(defvar python-font-lock-keywords
+  '(python-font-lock-keywords-level-1   ; When `font-lock-maximum-decoration' is nil.
+    python-font-lock-keywords-level-1   ; When `font-lock-maximum-decoration' is 1.
+    python-font-lock-keywords-level-2   ; When `font-lock-maximum-decoration' is 2.
+    python-font-lock-keywords-maximum-decoration ; When `font-lock-maximum-decoration'
+                                                 ; is more than 1, or t (which it is,
+                                                 ; by default).
+    )
+  "List of font lock keyword specifications to use in python-mode.
+
+Which one will be chosen depends on the value of
+`font-lock-maximum-decoration'.")
+
 
 (defconst python-syntax-propertize-function
   (syntax-propertize-rules
    ((python-rx string-delimiter)
     (0 (ignore (python-syntax-stringify))))))
 
+(define-obsolete-variable-alias 'python--prettify-symbols-alist
+  'python-prettify-symbols-alist "26.1")
+
 (defvar python-prettify-symbols-alist
   '(("lambda"  . ?λ)
     ("and" . ?∧)
     ("or" . ?∨))
   "Value for `prettify-symbols-alist' in `python-mode'.")
-
-(define-obsolete-variable-alias 'python--prettify-symbols-alist
-  'python-prettify-symbols-alist "26.1")
 
 (defsubst python-syntax-count-quotes (quote-char &optional point limit)
   "Count number of quotes around point (max is 3).
@@ -725,11 +763,17 @@ It makes underscores and dots word constituent chars.")
 
 ;;; Indentation
 
+(define-obsolete-variable-alias
+  'python-indent 'python-indent-offset "24.3")
+
 (defcustom python-indent-offset 4
   "Default indentation offset for Python."
   :group 'python
   :type 'integer
   :safe 'integerp)
+
+(define-obsolete-variable-alias
+  'python-guess-indent 'python-indent-guess-indent-offset "24.3")
 
 (defcustom python-indent-guess-indent-offset t
   "Non-nil tells Python mode to guess `python-indent-offset' value."
@@ -750,11 +794,11 @@ It makes underscores and dots word constituent chars.")
   :type '(repeat symbol)
   :group 'python)
 
-(define-obsolete-variable-alias
-  'python-indent 'python-indent-offset "24.3")
-
-(define-obsolete-variable-alias
-  'python-guess-indent 'python-indent-guess-indent-offset "24.3")
+(defcustom python-indent-def-block-scale 2
+  "Multiplier applied to indentation inside multi-line def blocks."
+  :version "26.1"
+  :type 'integer
+  :safe 'natnump)
 
 (defvar python-indent-current-level 0
   "Deprecated var available for compatibility.")
@@ -785,7 +829,7 @@ work on `python-indent-calculate-indentation' instead."
   (interactive)
   (save-excursion
     (save-restriction
-      (prog-widen)
+      (widen)
       (goto-char (point-min))
       (let ((block-end))
         (while (and (not block-end)
@@ -883,8 +927,6 @@ keyword
 :at-dedenter-block-start
  - Point is on a line starting a dedenter block.
  - START is the position where the dedenter block starts."
-  (save-restriction
-    (prog-widen)
     (let ((ppss (save-excursion
                   (beginning-of-line)
                   (syntax-ppss))))
@@ -925,7 +967,7 @@ keyword
                 (back-to-indentation)
                 (python-syntax-closing-paren-p))
               (cons :inside-paren-at-closing-nested-paren start))
-             ;; This line starts from a opening block in its own line.
+             ;; This line starts from an opening block in its own line.
              ((save-excursion
                 (goto-char start)
                 (when (and
@@ -1022,7 +1064,7 @@ keyword
                       (looking-at (python-rx block-ender)))
                     :after-block-end)
                    (t :after-line))
-             (point)))))))))
+             (point))))))))
 
 (defun python-indent--calculate-indentation ()
   "Internal implementation of `python-indent-calculate-indentation'.
@@ -1030,8 +1072,6 @@ May return an integer for the maximum possible indentation at
 current context or a list of integers.  The latter case is only
 happening for :at-dedenter-block-start context since the
 possibilities can be narrowed to specific indentation points."
-  (save-restriction
-    (prog-widen)
     (save-excursion
       (pcase (python-indent-context)
         (`(:no-indent . ,_) (prog-first-column)) ; usually 0
@@ -1079,9 +1119,9 @@ possibilities can be narrowed to specific indentation points."
                          (current-indentation)))
                      opening-block-start-points))))
         (`(,(or :inside-paren-newline-start-from-block) . ,start)
-         ;; Add two indentation levels to make the suite stand out.
          (goto-char start)
-         (+ (current-indentation) (* python-indent-offset 2)))))))
+         (+ (current-indentation)
+            (* python-indent-offset python-indent-def-block-scale))))))
 
 (defun python-indent--calculate-levels (indentation)
   "Calculate levels list given INDENTATION.
@@ -1476,7 +1516,7 @@ nested definitions."
 (defun python-nav-beginning-of-statement ()
   "Move to start of current statement."
   (interactive "^")
-  (back-to-indentation)
+  (forward-line 0)
   (let* ((ppss (syntax-ppss))
          (context-point
           (or
@@ -1491,6 +1531,7 @@ nested definitions."
              (python-info-line-ends-backslash-p))
            (forward-line -1)
            (python-nav-beginning-of-statement))))
+  (back-to-indentation)
   (point-marker))
 
 (defun python-nav-end-of-statement (&optional noend)
@@ -1508,9 +1549,10 @@ of the statement."
                        ;; are somehow out of whack.  This has been
                        ;; observed when using `syntax-ppss' during
                        ;; narrowing.
-                       (cl-assert (> string-start last-string-end)
+                       (cl-assert (>= string-start last-string-end)
                                   :show-args
-                                  "Overlapping strings detected")
+                                  "\
+Overlapping strings detected (start=%d, last-end=%d)")
                        (goto-char string-start)
                        (if (python-syntax-context 'paren)
                            ;; Ended up inside a paren, roll again.
@@ -1642,7 +1684,7 @@ ARG move forward only one sexp, else move backwards."
 
 (defun python-nav--lisp-forward-sexp-safe (&optional arg)
   "Safe version of standard `forward-sexp'.
-When at end of sexp (i.e. looking at a opening/closing paren)
+When at end of sexp (i.e. looking at an opening/closing paren)
 skips it instead of throwing an error.  With positive ARG move
 forward only one sexp, else move backwards."
   (let* ((arg (if (or (not arg) (> arg 0)) 1 -1))
@@ -2042,6 +2084,9 @@ executed through tramp connections."
   :type '(repeat string)
   :group 'python)
 
+(define-obsolete-variable-alias
+  'python-shell-virtualenv-path 'python-shell-virtualenv-root "25.1")
+
 (defcustom python-shell-virtualenv-root nil
   "Path to virtualenv root.
 This variable, when set to a string, makes the environment to be
@@ -2049,9 +2094,6 @@ modified such that shells are started within the specified
 virtualenv."
   :type '(choice (const nil) string)
   :group 'python)
-
-(define-obsolete-variable-alias
-  'python-shell-virtualenv-path 'python-shell-virtualenv-root "25.1")
 
 (defcustom python-shell-setup-codes nil
   "List of code run by `python-shell-send-setup-codes'."
@@ -2149,7 +2191,7 @@ of `exec-path'."
 (defun python-shell-tramp-refresh-process-environment (vec env)
   "Update VEC's process environment with ENV."
   ;; Stolen from `tramp-open-connection-setup-interactive-shell'.
-  (let ((env (append (when (fboundp #'tramp-get-remote-locale)
+  (let ((env (append (when (fboundp 'tramp-get-remote-locale)
                        ;; Emacs<24.4 compat.
                        (list (tramp-get-remote-locale vec)))
 		     (copy-sequence env)))
@@ -2451,7 +2493,7 @@ the `buffer-name'."
 Optional argument TIMEOUT is the timeout argument to
 `accept-process-output' calls.  Optional argument REGEXP
 overrides the regexp to match the end of output, defaults to
-`comint-prompt-regexp.'.  Returns non-nil when output was
+`comint-prompt-regexp'.  Returns non-nil when output was
 properly captured.
 
 This utility is useful in situations where the output may be
@@ -2469,7 +2511,7 @@ banner and the initial prompt are received separately."
           (throw 'found t))))))
 
 (defun python-shell-comint-end-of-output-p (output)
-  "Return non-nil if OUTPUT is ends with input prompt."
+  "Return non-nil if OUTPUT ends with input prompt."
   (string-match
    ;; XXX: It seems on macOS an extra carriage return is attached
    ;; at the end of output, this handles that too.
@@ -2674,10 +2716,9 @@ With argument MSG show activation/deactivation message."
   "Hook run upon first (non-pdb) shell prompt detection.
 This is the place for shell setup functions that need to wait for
 output.  Since the first prompt is ensured, this helps the
-current process to not hang waiting for output by safeguarding
-interactive actions can be performed.  This is useful to safely
-attach setup code for long-running processes that eventually
-provide a shell."
+current process to not hang while waiting.  This is useful to
+safely attach setup code for long-running processes that
+eventually provide a shell."
   :version "25.1"
   :type 'hook
   :group 'python)
@@ -2832,10 +2873,12 @@ process buffer for a list of commands.)"
         (y-or-n-p "Make dedicated process? ")
         (= (prefix-numeric-value current-prefix-arg) 4))
      (list (python-shell-calculate-command) nil t)))
-  (get-buffer-process
-   (python-shell-make-comint
-    (or cmd (python-shell-calculate-command))
-    (python-shell-get-process-name dedicated) show)))
+  (let ((buffer
+         (python-shell-make-comint
+          (or cmd (python-shell-calculate-command))
+          (python-shell-get-process-name dedicated) show)))
+    (pop-to-buffer buffer)
+    (get-buffer-process buffer)))
 
 (defun run-python-internal ()
   "Run an inferior Internal Python process.
@@ -2913,10 +2956,16 @@ be asked for their values."
  "Instead call `python-shell-get-process' and create one if returns nil."
  "25.1")
 
+(define-obsolete-variable-alias
+  'python-buffer 'python-shell-internal-buffer "24.3")
+
 (defvar python-shell-internal-buffer nil
   "Current internal shell buffer for the current buffer.
 This is really not necessary at all for the code to work but it's
 there for compatibility with CEDET.")
+
+(define-obsolete-variable-alias
+  'python-preoutput-result 'python-shell-internal-last-output "24.3")
 
 (defvar python-shell-internal-last-output nil
   "Last output captured by the internal shell.
@@ -2932,12 +2981,6 @@ there for compatibility with CEDET.")
 
 (define-obsolete-function-alias
   'python-proc 'python-shell-internal-get-or-create-process "24.3")
-
-(define-obsolete-variable-alias
-  'python-buffer 'python-shell-internal-buffer "24.3")
-
-(define-obsolete-variable-alias
-  'python-preoutput-result 'python-shell-internal-last-output "24.3")
 
 (defun python-shell--save-temp-file (string)
   (let* ((temporary-file-directory
@@ -3153,9 +3196,12 @@ t when called interactively."
                        (beginning-of-line 1))
                    (> (current-indentation) 0)))
        (when (not arg)
-         (while (and (forward-line -1)
-                     (looking-at (python-rx decorator))))
-         (forward-line 1))
+         (while (and
+                 (eq (forward-line -1) 0)
+                 (if (looking-at (python-rx decorator))
+                     t
+                   (forward-line 1)
+                   nil))))
        (point-marker))
      (progn
        (or (python-nav-end-of-defun)
@@ -3186,10 +3232,10 @@ t when called interactively."
                      (insert-file-contents
                       (or temp-file-name file-name))
                      (python-info-encoding)))
-         (file-name (expand-file-name (file-local-name file-name)))
+         (file-name (file-local-name (expand-file-name file-name)))
          (temp-file-name (when temp-file-name
-                           (expand-file-name
-                            (file-local-name temp-file-name)))))
+                           (file-local-name (expand-file-name
+                                             temp-file-name)))))
     (python-shell-send-string
      (format
       (concat
@@ -3290,14 +3336,6 @@ def __PYTHON_EL_get_completions(text):
   :type 'string
   :group 'python)
 
-(defcustom python-shell-completion-string-code
-  "';'.join(__PYTHON_EL_get_completions('''%s'''))"
-  "Python code used to get a string of completions separated by semicolons.
-The string passed to the function is the current python name or
-the full statement in the case of imports."
-  :type 'string
-  :group 'python)
-
 (define-obsolete-variable-alias
   'python-shell-completion-module-string-code
   'python-shell-completion-string-code
@@ -3309,6 +3347,14 @@ the full statement in the case of imports."
   'python-shell-completion-string-code
   "25.1"
   "Completion string code must work for (i)pdb.")
+
+(defcustom python-shell-completion-string-code
+  "';'.join(__PYTHON_EL_get_completions('''%s'''))"
+  "Python code used to get a string of completions separated by semicolons.
+The string passed to the function is the current python name or
+the full statement in the case of imports."
+  :type 'string
+  :group 'python)
 
 (defcustom python-shell-completion-native-disabled-interpreters
   ;; PyPy's readline cannot handle some escape sequences yet.  Native
@@ -4041,6 +4087,9 @@ JUSTIFY should be used (if applicable) as in `fill-paragraph'."
 
 ;;; Skeletons
 
+(define-obsolete-variable-alias
+  'python-use-skeletons 'python-skeleton-autoinsert "24.3")
+
 (defcustom python-skeleton-autoinsert nil
   "Non-nil means template skeletons will be automagically inserted.
 This happens when pressing \"if<SPACE>\", for example, to prompt for
@@ -4048,9 +4097,6 @@ the if condition."
   :type 'boolean
   :group 'python
   :safe 'booleanp)
-
-(define-obsolete-variable-alias
-  'python-use-skeletons 'python-skeleton-autoinsert "24.3")
 
 (defvar python-skeleton-available '()
   "Internal list of available skeletons.")
@@ -4594,7 +4640,7 @@ Optional argument INCLUDE-TYPE indicates to include the type of the defun.
 This function can be used as the value of `add-log-current-defun-function'
 since it returns nil if point is not inside a defun."
   (save-restriction
-    (prog-widen)
+    (widen)
     (save-excursion
       (end-of-line 1)
       (let ((names)
@@ -4792,12 +4838,10 @@ likely an invalid python file."
   "Message the first line of the block the current statement closes."
   (let ((point (python-info-dedenter-opening-block-position)))
     (when point
-      (save-restriction
-        (prog-widen)
         (message "Closes %s" (save-excursion
                                (goto-char point)
                                (buffer-substring
-                                (point) (line-end-position))))))))
+                                (point) (line-end-position)))))))
 
 (defun python-info-dedenter-statement-p ()
   "Return point if current statement is a dedenter.
@@ -4813,8 +4857,6 @@ statement."
   "Return non-nil if current line ends with backslash.
 With optional argument LINE-NUMBER, check that line instead."
   (save-excursion
-    (save-restriction
-      (prog-widen)
       (when line-number
         (python-util-goto-line line-number))
       (while (and (not (eobp))
@@ -4823,14 +4865,12 @@ With optional argument LINE-NUMBER, check that line instead."
                   (not (equal (char-before (point)) ?\\)))
         (forward-line 1))
       (when (equal (char-before) ?\\)
-        (point-marker)))))
+        (point-marker))))
 
 (defun python-info-beginning-of-backslash (&optional line-number)
-  "Return the point where the backslashed line start.
+  "Return the point where the backslashed line starts.
 Optional argument LINE-NUMBER forces the line number to check against."
   (save-excursion
-    (save-restriction
-      (prog-widen)
       (when line-number
         (python-util-goto-line line-number))
       (when (python-info-line-ends-backslash-p)
@@ -4839,15 +4879,13 @@ Optional argument LINE-NUMBER forces the line number to check against."
                  (python-syntax-context 'paren))
           (forward-line -1))
         (back-to-indentation)
-        (point-marker)))))
+        (point-marker))))
 
 (defun python-info-continuation-line-p ()
   "Check if current line is continuation of another.
 When current line is continuation of another return the point
 where the continued line ends."
   (save-excursion
-    (save-restriction
-      (prog-widen)
       (let* ((context-type (progn
                              (back-to-indentation)
                              (python-syntax-context-type)))
@@ -4873,7 +4911,7 @@ where the continued line ends."
                (python-util-forward-comment -1)
                (when (and (equal (1- line-start) (line-number-at-pos))
                           (python-info-line-ends-backslash-p))
-                 (point-marker))))))))
+                 (point-marker)))))))
 
 (defun python-info-block-continuation-line-p ()
   "Return non-nil if current line is a continuation of a block."
@@ -5165,6 +5203,7 @@ This is a non empty list of strings, the checker tool possibly followed by
 required arguments.  Once launched it will receive the Python source to be
 checked as its standard input.
 To use `flake8' you would set this to (\"flake8\" \"-\")."
+  :version "26.1"
   :group 'python-flymake
   :type '(repeat string))
 
@@ -5186,6 +5225,7 @@ MESSAGE'th gives the message text itself.
 If COLUMN or TYPE are nil or that index didn't match, that
 information is not present on the matched line and a default will
 be used."
+  :version "26.1"
   :group 'python-flymake
   :type '(list regexp
                (integer :tag "Line's index")
@@ -5200,15 +5240,17 @@ be used."
 (defcustom python-flymake-msg-alist
   '(("\\(^redefinition\\|.*unused.*\\|used$\\)" . :warning))
   "Alist used to associate messages to their types.
-Each element should be a cons-cell (REGEXP . TYPE), where TYPE must be
-one defined in the variable `flymake-diagnostic-types-alist'.
-For example, when using `flake8' a possible configuration could be:
+Each element should be a cons-cell (REGEXP . TYPE), where TYPE
+should be a diagnostic type symbol like `:error', `:warning' or
+`:note'.  For example, when using `flake8' a possible
+configuration could be:
 
   ((\"\\(^redefinition\\|.*unused.*\\|used$\\)\" . :warning)
    (\"^E999\" . :error)
    (\"^[EW][0-9]+\" . :note))
 
 By default messages are considered errors."
+  :version "26.1"
   :group 'python-flymake
   :type `(alist :key-type (regexp)
                 :value-type (symbol)))
@@ -5294,6 +5336,7 @@ REPORT-FN is Flymake's callback function."
     (save-excursion (insert (make-string 2 last-command-event)))))
 
 (defvar electric-indent-inhibit)
+(defvar prettify-symbols-alist)
 
 ;;;###autoload
 (define-derived-mode python-mode prog-mode "Python"
@@ -5313,7 +5356,7 @@ REPORT-FN is Flymake's callback function."
        'python-nav-forward-sexp)
 
   (set (make-local-variable 'font-lock-defaults)
-       '(python-font-lock-keywords
+       `(,python-font-lock-keywords
          nil nil nil nil
          (font-lock-syntactic-face-function
           . python-font-lock-syntactic-face-function)))
@@ -5389,7 +5432,7 @@ REPORT-FN is Flymake's callback function."
            (1+ (/ (current-indentation) python-indent-offset))))
 
   (set (make-local-variable 'prettify-symbols-alist)
-       python--prettify-symbols-alist)
+       python-prettify-symbols-alist)
 
   (python-skeleton-add-menu-items)
 

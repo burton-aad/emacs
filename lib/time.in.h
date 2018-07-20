@@ -1,6 +1,6 @@
 /* A more-standard <time.h>.
 
-   Copyright (C) 2007-2017 Free Software Foundation, Inc.
+   Copyright (C) 2007-2018 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -212,7 +212,7 @@ _GL_CXXALIASWARN (gmtime_r);
 #    define localtime rpl_localtime
 #   endif
 _GL_FUNCDECL_RPL (localtime, struct tm *, (time_t const *__timer)
-		                          _GL_ARG_NONNULL ((1)));
+                                          _GL_ARG_NONNULL ((1)));
 _GL_CXXALIAS_RPL (localtime, struct tm *, (time_t const *__timer));
 #  else
 _GL_CXXALIAS_SYS (localtime, struct tm *, (time_t const *__timer));

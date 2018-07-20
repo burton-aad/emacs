@@ -1,6 +1,6 @@
 /* MS-DOS specific C utilities.          -*- coding: cp850 -*-
 
-Copyright (C) 1993-1997, 1999-2017 Free Software Foundation, Inc.
+Copyright (C) 1993-1997, 1999-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -3063,15 +3063,15 @@ XMenuActivate (Display *foo, XMenu *menu, int *pane, int *selidx,
   state = alloca (menu->panecount * sizeof (struct IT_menu_state));
   screensize = screen_size * 2;
   faces[0]
-    = lookup_derived_face (sf, intern ("msdos-menu-passive-face"),
+    = lookup_derived_face (NULL, sf, intern ("msdos-menu-passive-face"),
 			   DEFAULT_FACE_ID, 1);
   faces[1]
-    = lookup_derived_face (sf, intern ("msdos-menu-active-face"),
+    = lookup_derived_face (NULL, sf, intern ("msdos-menu-active-face"),
 			   DEFAULT_FACE_ID, 1);
   selectface = intern ("msdos-menu-select-face");
-  faces[2] = lookup_derived_face (sf, selectface,
+  faces[2] = lookup_derived_face (NULL, sf, selectface,
 				  faces[0], 1);
-  faces[3] = lookup_derived_face (sf, selectface,
+  faces[3] = lookup_derived_face (NULL, sf, selectface,
 				  faces[1], 1);
 
   /* Make sure the menu title is always displayed with

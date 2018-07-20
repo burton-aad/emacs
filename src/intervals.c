@@ -1,5 +1,5 @@
 /* Code for doing intervals.
-   Copyright (C) 1993-1995, 1997-1998, 2001-2017 Free Software
+   Copyright (C) 1993-1995, 1997-1998, 2001-2018 Free Software
    Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -197,7 +197,7 @@ intervals_equal (INTERVAL i0, INTERVAL i1)
 	}
 
       /* i0 has something i1 doesn't.  */
-      if (EQ (i1_val, Qnil))
+      if (NILP (i1_val))
 	return false;
 
       /* i0 and i1 both have sym, but it has different values in each.  */

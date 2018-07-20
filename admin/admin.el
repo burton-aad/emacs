@@ -1,6 +1,6 @@
 ;;; admin.el --- utilities for Emacs administration
 
-;; Copyright (C) 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2001-2018 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -261,8 +261,12 @@ ROOT should be the root of an Emacs source tree."
 ROOT should be the root of an Emacs source tree.
 Interactively with a prefix argument, prompt for TYPE.
 Optional argument TYPE is type of output (nil means all)."
-  (interactive (let ((root (read-directory-name "Emacs root directory: "
-						source-directory nil t)))
+  (interactive (let ((root
+                      (if noninteractive
+                          (or (pop command-line-args-left)
+                              default-directory)
+                        (read-directory-name "Emacs root directory: "
+                                             source-directory nil t))))
 		 (list root
 		       (if current-prefix-arg
 			   (completing-read
@@ -717,8 +721,12 @@ style=\"text-align:left\">")
 ROOT should be the root of an Emacs source tree.
 Interactively with a prefix argument, prompt for TYPE.
 Optional argument TYPE is type of output (nil means all)."
-  (interactive (let ((root (read-directory-name "Emacs root directory: "
-						source-directory nil t)))
+  (interactive (let ((root
+                      (if noninteractive
+                          (or (pop command-line-args-left)
+                              default-directory)
+                        (read-directory-name "Emacs root directory: "
+                                             source-directory nil t))))
 		 (list root
 		       (if current-prefix-arg
 			   (completing-read

@@ -1,6 +1,6 @@
 /* Parameters and display hooks for terminal devices.
 
-Copyright (C) 1985-1986, 1993-1994, 2001-2017 Free Software Foundation,
+Copyright (C) 1985-1986, 1993-1994, 2001-2018 Free Software Foundation,
 Inc.
 
 This file is part of GNU Emacs.
@@ -669,7 +669,7 @@ INLINE struct terminal *
 XTERMINAL (Lisp_Object a)
 {
   eassert (TERMINALP (a));
-  return XUNTAG (a, Lisp_Vectorlike);
+  return XUNTAG (a, Lisp_Vectorlike, struct terminal);
 }
 
 /* Most code should use these functions to set Lisp fields in struct

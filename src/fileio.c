@@ -1,6 +1,6 @@
 /* File IO for GNU Emacs.
 
-Copyright (C) 1985-1988, 1993-2017 Free Software Foundation, Inc.
+Copyright (C) 1985-1988, 1993-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -139,7 +139,7 @@ static bool e_write (int, Lisp_Object, ptrdiff_t, ptrdiff_t,
 		     struct coding_system *);
 
 
-/* Return true if FILENAME exists.  */
+/* Return true if FILENAME exists, otherwise return false and set errno.  */
 
 static bool
 check_existing (const char *filename)
@@ -224,6 +224,7 @@ report_file_error (char const *string, Lisp_Object name)
   report_file_errno (string, name, errno);
 }
 
+#ifdef USE_FILE_NOTIFY
 /* Like report_file_error, but reports a file-notify-error instead.  */
 
 void
@@ -238,6 +239,7 @@ report_file_notify_error (const char *string, Lisp_Object name)
 
   xsignal (Qfile_notify_error, Fcons (build_string (string), errdata));
 }
+#endif
 
 void
 close_file_unwind (int fd)
@@ -811,17 +813,14 @@ the root directory.  */)
 #endif
     }
 
-  if (!NILP (default_directory))
+  handler = Ffind_file_name_handler (default_directory, Qexpand_file_name);
+  if (!NILP (handler))
     {
-      handler = Ffind_file_name_handler (default_directory, Qexpand_file_name);
-      if (!NILP (handler))
-	{
-	  handled_name = call3 (handler, Qexpand_file_name,
-				name, default_directory);
-	  if (STRINGP (handled_name))
-	    return handled_name;
-	  error ("Invalid handler in `file-name-handler-alist'");
-	}
+      handled_name = call3 (handler, Qexpand_file_name,
+			    name, default_directory);
+      if (STRINGP (handled_name))
+	return handled_name;
+      error ("Invalid handler in `file-name-handler-alist'");
     }
 
   {
@@ -865,9 +864,61 @@ the root directory.  */)
       }
   }
   multibyte = STRING_MULTIBYTE (name);
-  if (multibyte != STRING_MULTIBYTE (default_directory))
+  bool defdir_multibyte = STRING_MULTIBYTE (default_directory);
+  if (multibyte != defdir_multibyte)
     {
+      /* We want to make both NAME and DEFAULT_DIRECTORY have the same
+	 multibyteness.  Strategy:
+	 . If either NAME or DEFAULT_DIRECTORY is pure-ASCII, they
+	   can be converted to the multibyteness of the other one
+	   while keeping the same byte sequence.
+	 . If both are non-ASCII, the only safe conversion is to
+	   convert the multibyte one to be unibyte, because the
+	   reverse conversion potentially adds bytes while raw bytes
+	   are converted to their multibyte forms, which we will be
+	   unable to account for, since the information about the
+	   original multibyteness is lost.  If those additional bytes
+	   later leak to system APIs because they are not encoded or
+	   because they are converted to unibyte strings by keeping
+	   the data, file APIs will fail.
+
+	 Note: One could argue that if we see a multibyte string, it
+	 is evidence that file-name decoding was already set up, and
+	 we could convert unibyte strings to multibyte using
+	 DECODE_FILE.  However, this is risky, because the likes of
+	 string_to_multibyte are able of creating multibyte strings
+	 without any decoding.  */
       if (multibyte)
+	{
+	  bool name_ascii_p = SCHARS (name) == SBYTES (name);
+	  unsigned char *p = SDATA (default_directory);
+
+	  if (!name_ascii_p)
+	    while (*p && ASCII_CHAR_P (*p))
+	      p++;
+	  if (name_ascii_p || *p != '\0')
+	    {
+	      /* DEFAULT_DIRECTORY is unibyte and possibly non-ASCII.
+		 Make a unibyte string out of NAME, and arrange for
+		 the result of this function to be a unibyte string.
+		 This is needed during bootstrapping and dumping, when
+		 Emacs cannot decode file names, because the locale
+		 environment is not set up.  */
+	      name = make_unibyte_string (SSDATA (name), SBYTES (name));
+	      multibyte = 0;
+	    }
+	  else
+	    {
+	      /* NAME is non-ASCII and multibyte, and
+		 DEFAULT_DIRECTORY is unibyte and pure-ASCII: make a
+		 multibyte string out of DEFAULT_DIRECTORY's data.  */
+	      default_directory =
+		make_multibyte_string (SSDATA (default_directory),
+				       SCHARS (default_directory),
+				       SCHARS (default_directory));
+	    }
+	}
+      else
 	{
 	  unsigned char *p = SDATA (name);
 
@@ -875,23 +926,16 @@ the root directory.  */)
 	    p++;
 	  if (*p == '\0')
 	    {
-	      /* NAME is a pure ASCII string, and DEFAULT_DIRECTORY is
-		 unibyte.  Do not convert DEFAULT_DIRECTORY to
-		 multibyte; instead, convert NAME to a unibyte string,
-		 so that the result of this function is also a unibyte
-		 string.  This is needed during bootstrapping and
-		 dumping, when Emacs cannot decode file names, because
-		 the locale environment is not set up.  */
-	      name = make_unibyte_string (SSDATA (name), SBYTES (name));
-	      multibyte = 0;
+	      /* DEFAULT_DIRECTORY is multibyte and NAME is unibyte
+		 and pure-ASCII.  Make a multibyte string out of
+		 NAME's data.  */
+	      name = make_multibyte_string (SSDATA (name),
+					    SCHARS (name), SCHARS (name));
+	      multibyte = 1;
 	    }
 	  else
-	    default_directory = string_to_multibyte (default_directory);
-	}
-      else
-	{
-	  name = string_to_multibyte (name);
-	  multibyte = 1;
+	    default_directory = make_unibyte_string (SSDATA (default_directory),
+						     SBYTES (default_directory));
 	}
     }
 
@@ -2595,7 +2639,7 @@ DEFUN ("file-writable-p", Ffile_writable_p, Sfile_writable_p, 1, 1, 0,
   /* The read-only attribute of the parent directory doesn't affect
      whether a file or directory can be created within it.  Some day we
      should check ACLs though, which do affect this.  */
-  return file_directory_p (SSDATA (dir)) ? Qt : Qnil;
+  return file_directory_p (dir) ? Qt : Qnil;
 #else
   return check_writable (SSDATA (dir), W_OK | X_OK) ? Qt : Qnil;
 #endif
@@ -2689,19 +2733,47 @@ See `file-symlink-p' to distinguish symlinks.  */)
 
   absname = ENCODE_FILE (absname);
 
-  return file_directory_p (SSDATA (absname)) ? Qt : Qnil;
+  return file_directory_p (absname) ? Qt : Qnil;
 }
 
-/* Return true if FILE is a directory or a symlink to a directory.  */
+/* Return true if FILE is a directory or a symlink to a directory.
+   Otherwise return false and set errno.  */
 bool
-file_directory_p (char const *file)
+file_directory_p (Lisp_Object file)
 {
-#ifdef WINDOWSNT
+#ifdef DOS_NT
   /* This is cheaper than 'stat'.  */
-  return faccessat (AT_FDCWD, file, D_OK, AT_EACCESS) == 0;
+  return faccessat (AT_FDCWD, SSDATA (file), D_OK, AT_EACCESS) == 0;
 #else
+# ifdef O_PATH
+  /* Use O_PATH if available, as it avoids races and EOVERFLOW issues.  */
+  int fd = openat (AT_FDCWD, SSDATA (file), O_PATH | O_CLOEXEC | O_DIRECTORY);
+  if (0 <= fd)
+    {
+      emacs_close (fd);
+      return true;
+    }
+  if (errno != EINVAL)
+    return false;
+  /* O_PATH is defined but evidently this Linux kernel predates 2.6.39.
+     Fall back on generic POSIX code.  */
+# endif
+  /* Use file_accessible_directory, as it avoids stat EOVERFLOW
+     problems and could be cheaper.  However, if it fails because FILE
+     is inaccessible, fall back on stat; if the latter fails with
+     EOVERFLOW then FILE must have been a directory unless a race
+     condition occurred (a problem hard to work around portably).  */
+  if (file_accessible_directory_p (file))
+    return true;
+  if (errno != EACCES)
+    return false;
   struct stat st;
-  return stat (file, &st) == 0 && S_ISDIR (st.st_mode);
+  if (stat (SSDATA (file), &st) != 0)
+    return errno == EOVERFLOW;
+  if (S_ISDIR (st.st_mode))
+    return true;
+  errno = ENOTDIR;
+  return false;
 #endif
 }
 
@@ -2762,7 +2834,7 @@ file_accessible_directory_p (Lisp_Object file)
   return (SBYTES (file) == 0
 	  || w32_accessible_directory_p (SSDATA (file), SBYTES (file)));
 # else	/* MSDOS */
-  return file_directory_p (SSDATA (file));
+  return file_directory_p (file);
 # endif	 /* MSDOS */
 #else	 /* !DOS_NT */
   /* On POSIXish platforms, use just one system call; this avoids a
@@ -2783,12 +2855,15 @@ file_accessible_directory_p (Lisp_Object file)
     dir = data;
   else
     {
-      /* Just check for trailing '/' when deciding whether to append '/'.
-	 That's simpler than testing the two special cases "/" and "//",
-	 and it's a safe optimization here.  */
-      char *buf = SAFE_ALLOCA (len + 3);
+      /* Just check for trailing '/' when deciding whether append '/'
+	 before appending '.'.  That's simpler than testing the two
+	 special cases "/" and "//", and it's a safe optimization
+	 here.  After appending '.', append another '/' to work around
+	 a macOS bug (Bug#30350).  */
+      static char const appended[] = "/./";
+      char *buf = SAFE_ALLOCA (len + sizeof appended);
       memcpy (buf, data, len);
-      strcpy (buf + len, &"/."[data[len - 1] == '/']);
+      strcpy (buf + len, &appended[data[len - 1] == '/']);
       dir = buf;
     }
 
@@ -3192,7 +3267,7 @@ Use the current time if TIMESTAMP is nil.  TIMESTAMP is in the format of
       {
 #ifdef MSDOS
         /* Setting times on a directory always fails.  */
-        if (file_directory_p (SSDATA (encoded_absname)))
+        if (file_directory_p (encoded_absname))
           return Qnil;
 #endif
         report_file_error ("Setting file times", absname);
@@ -3287,20 +3362,27 @@ decide_coding_unwind (Lisp_Object unwind_data)
   bset_undo_list (current_buffer, undo_list);
 }
 
-/* Read from a non-regular file.  STATE is a Lisp_Save_Value
-   object where slot 0 is the file descriptor, slot 1 specifies
-   an offset to put the read bytes, and slot 2 is the maximum
-   amount of bytes to read.  Value is the number of bytes read.  */
+/* Read from a non-regular file.  Return the number of bytes read.  */
+
+union read_non_regular
+{
+  struct
+  {
+    int fd;
+    ptrdiff_t inserted, trytry;
+  } s;
+  GCALIGNED_UNION
+};
+verify (alignof (union read_non_regular) % GCALIGNMENT == 0);
 
 static Lisp_Object
 read_non_regular (Lisp_Object state)
 {
-  int nbytes = emacs_read_quit (XSAVE_INTEGER (state, 0),
+  union read_non_regular *data = XINTPTR (state);
+  int nbytes = emacs_read_quit (data->s.fd,
 				((char *) BEG_ADDR + PT_BYTE - BEG_BYTE
-				 + XSAVE_INTEGER (state, 1)),
-				XSAVE_INTEGER (state, 2));
-  /* Fast recycle this object for the likely next call.  */
-  free_misc (state);
+				 + data->s.inserted),
+				data->s.trytry);
   return make_number (nbytes);
 }
 
@@ -4155,9 +4237,9 @@ by calling `format-decode', which see.  */)
 	    /* Read from the file, capturing `quit'.  When an
 	       error occurs, end the loop, and arrange for a quit
 	       to be signaled after decoding the text we read.  */
+	    union read_non_regular data = {{fd, inserted, trytry}};
 	    nbytes = internal_condition_case_1
-	      (read_non_regular,
-	       make_save_int_int_int (fd, inserted, trytry),
+	      (read_non_regular, make_pointer_integer (&data),
 	       Qerror, read_non_regular_quit);
 
 	    if (NILP (nbytes))
@@ -5632,7 +5714,7 @@ A non-nil CURRENT-ONLY argument means save only current buffer.  */)
 		   spare the user annoying messages.  */
 		&& XFASTINT (BVAR (b, save_length)) > 5000
 		/* These messages are frequent and annoying for `*mail*'.  */
-		&& !EQ (BVAR (b, filename), Qnil)
+		&& !NILP (BVAR (b, filename))
 		&& NILP (no_message))
 	      {
 		/* It has shrunk too much; turn off auto-saving here.  */
@@ -5685,8 +5767,7 @@ A non-nil CURRENT-ONLY argument means save only current buffer.  */)
   Vquit_flag = oquit;
 
   /* This restores the message-stack status.  */
-  unbind_to (count, Qnil);
-  return Qnil;
+  return unbind_to (count, Qnil);
 }
 
 DEFUN ("set-buffer-auto-saved", Fset_buffer_auto_saved,

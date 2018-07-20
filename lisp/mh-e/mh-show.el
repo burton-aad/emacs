@@ -1,6 +1,6 @@
 ;;; mh-show.el --- MH-Show mode
 
-;; Copyright (C) 1993, 1995, 1997, 2000-2017 Free Software Foundation,
+;; Copyright (C) 1993, 1995, 1997, 2000-2018 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Bill Wohler <wohler@newt.com>
@@ -774,7 +774,7 @@ operation."
     ("^\\(Apparently-To:\\|Newsgroups:\\)\\(.*\\)"
      (1 'default)
      (2 'mh-show-cc))
-    ("^\\(In-reply-to\\|Date\\):\\(.*\\)$"
+    ("^\\(In-Reply-To\\|Date\\):\\(.*\\)$"
      (1 'default)
      (2 'mh-show-date))
     (mh-letter-header-font-lock

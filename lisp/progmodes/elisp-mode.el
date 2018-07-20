@@ -1,6 +1,6 @@
 ;;; elisp-mode.el --- Emacs Lisp mode  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-1986, 1999-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1985-1986, 1999-2018 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: lisp, languages
@@ -45,7 +45,7 @@ It has `lisp-mode-abbrev-table' as its parent."
   "Syntax table used in `emacs-lisp-mode'.")
 
 (defvar emacs-lisp-mode-map
-  (let ((map (make-sparse-keymap "Emacs-Lisp"))
+  (let ((map (make-sparse-keymap))
 	(menu-map (make-sparse-keymap "Emacs-Lisp"))
 	(lint-map (make-sparse-keymap))
 	(prof-map (make-sparse-keymap))
@@ -307,6 +307,8 @@ Blank lines separate paragraphs.  Semicolons start comments.
           (setq sexp (ignore-errors (butlast sexp)))))
     res))
 
+(defvar warning-minimum-log-level)
+
 (defun elisp--local-variables ()
   "Return a list of locally let-bound variables at point."
   (save-excursion
@@ -328,7 +330,7 @@ Blank lines separate paragraphs.  Semicolons start comments.
                                      (error form))))
              (sexp
               (unwind-protect
-                  (progn
+                  (let ((warning-minimum-log-level :emergency))
                     (advice-add 'macroexpand :around macroexpand-advice)
                     (macroexpand-all sexp))
                 (advice-remove 'macroexpand macroexpand-advice)))
@@ -1130,7 +1132,9 @@ character)."
         (eval-expression-get-print-arguments eval-last-sexp-arg-internal)))
     ;; Setup the lexical environment if lexical-binding is enabled.
     (elisp--eval-last-sexp-print-value
-     (eval (eval-sexp-add-defvars (elisp--preceding-sexp)) lexical-binding)
+     (eval (macroexpand-all
+            (eval-sexp-add-defvars (elisp--preceding-sexp)))
+           lexical-binding)
      (if insert-value (current-buffer) t) no-truncate char-print-limit)))
 
 (defun elisp--eval-last-sexp-print-value
@@ -1163,7 +1167,6 @@ character)."
 (defun eval-sexp-add-defvars (exp &optional pos)
   "Prepend EXP with all the `defvar's that precede it in the buffer.
 POS specifies the starting position where EXP was found and defaults to point."
-  (setq exp (macroexpand-all exp))      ;Eager macro-expansion.
   (if (not lexical-binding)
       exp
     (save-excursion
@@ -1188,11 +1191,11 @@ current buffer.
 Normally, this function truncates long output according to the
 value of the variables `eval-expression-print-length' and
 `eval-expression-print-level'.  With a prefix argument of zero,
-however, there is no such truncation.  Such a prefix argument
-also causes integers to be printed in several additional formats
-\(octal, hexadecimal, and character when the prefix argument is
--1 or the integer is `eval-expression-print-maximum-character' or
-less).
+however, there is no such truncation.
+Integer values are printed in several formats (decimal, octal,
+and hexadecimal).  When the prefix argument is -1 or the value
+doesn't exceed `eval-expression-print-maximum-character', an
+integer value is also printed as a character of that codepoint.
 
 If `eval-expression-debug-on-error' is non-nil, which is the default,
 this command arranges for all errors to enter the debugger."
@@ -1698,9 +1701,11 @@ current buffer state and calls REPORT-FN when done."
           (when (eq (process-status proc) 'exit)
             (unwind-protect
                 (cond
-                 ((not (eq proc (with-current-buffer source-buffer
-                                  elisp-flymake--byte-compile-process)))
-                  (flymake-log :warning "byte-compile process %s obsolete" proc))
+                 ((not (and (buffer-live-p source-buffer)
+                            (eq proc (with-current-buffer source-buffer
+                                       elisp-flymake--byte-compile-process))))
+                  (flymake-log :warning
+                               "byte-compile process %s obsolete" proc))
                  ((zerop (process-exit-status proc))
                   (elisp-flymake--byte-compile-done report-fn
                                                     source-buffer
@@ -1711,9 +1716,9 @@ current buffer state and calls REPORT-FN when done."
                            :explanation
                            (format "byte-compile process %s died" proc))))
               (ignore-errors (delete-file temp-file))
-              (kill-buffer output-buffer))))))
-      :stderr null-device
-      :noquery t)))
+              (kill-buffer output-buffer))))
+        :stderr " *stderr of elisp-flymake-byte-compile*"
+        :noquery t)))))
 
 (defun elisp-flymake--batch-compile-for-flymake (&optional file)
   "Helper for `elisp-flymake-byte-compile'.

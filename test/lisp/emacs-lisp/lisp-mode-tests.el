@@ -1,6 +1,6 @@
 ;;; lisp-mode-tests.el --- Test Lisp editing commands  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2017 Free Software Foundation, Inc.
+;; Copyright (C) 2017-2018 Free Software Foundation, Inc.
 
 ;; GNU Emacs is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -223,6 +223,16 @@ Expected initialization file: `%s'\"
       (goto-char (point-min))
       (comment-indent)
       (should (equal (buffer-string) correct)))))
+
+(ert-deftest lisp-indent-with-read-only-field ()
+  "Test indentation on line with read-only field (Bug#32014)."
+  (with-temp-buffer
+    (insert (propertize "prompt> " 'field 'output 'read-only t
+                        'rear-nonsticky t 'front-sticky '(read-only)))
+    (insert " foo")
+    (lisp-indent-line)
+    (should (equal (buffer-string) "prompt> foo"))))
+
 
 
 (provide 'lisp-mode-tests)

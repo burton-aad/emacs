@@ -1,6 +1,6 @@
 ;; xref.el --- Cross-referencing commands              -*-lexical-binding:t-*-
 
-;; Copyright (C) 2014-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2014-2018 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -501,8 +501,9 @@ SELECT is `quit', also quit the *xref* window."
              (xref-buffer (current-buffer)))
         (cond (select
                (if (eq select 'quit) (quit-window nil nil))
-               (with-current-buffer xref-buffer
-                 (select-window (xref--show-pos-in-buf marker buf))))
+               (select-window
+                (with-current-buffer xref-buffer
+                  (xref--show-pos-in-buf marker buf))))
               (t
                (save-selected-window
                  (xref--with-dedicated-window
@@ -539,9 +540,11 @@ SELECT is `quit', also quit the *xref* window."
 Non-interactively, non-nil QUIT means to first quit the *xref*
 buffer."
   (interactive)
-  (let ((xref (or (xref--item-at-point)
+  (let ((buffer (current-buffer))
+        (xref (or (xref--item-at-point)
                   (user-error "No reference at point"))))
-    (xref--show-location (xref-item-location xref) (if quit 'quit t))))
+    (xref--show-location (xref-item-location xref) (if quit 'quit t))
+    (next-error-found buffer (current-buffer))))
 
 (defun xref-quit-and-goto-xref ()
   "Quit *xref* buffer, then jump to xref on current line."
@@ -692,6 +695,10 @@ references displayed in the current *xref* buffer."
     (dotimes (_ n)
       (setq xref (xref--search-property 'xref-item backward)))
     (cond (xref
+           ;; Save the current position (when the buffer is visible,
+           ;; it gets reset to that window's point from time to time).
+           (let ((win (get-buffer-window (current-buffer))))
+             (and win (set-window-point win (point))))
            (xref--show-location (xref-item-location xref) t))
           (t
            (error "No %s xref" (if backward "previous" "next"))))))
@@ -865,6 +872,19 @@ buffer where the user can select from the list."
 With prefix argument, prompt for the identifier."
   (interactive (list (xref--read-identifier "Find references of: ")))
   (xref--find-xrefs identifier 'references identifier nil))
+
+;;;###autoload
+(defun xref-find-definitions-at-mouse (event)
+  "Find the definition of identifier at or around mouse click.
+This command is intended to be bound to a mouse event."
+  (interactive "e")
+  (let ((identifier
+         (save-excursion
+           (mouse-set-point event)
+           (xref-backend-identifier-at-point (xref-find-backend)))))
+    (if identifier
+        (xref-find-definitions identifier)
+      (user-error "No identifier here"))))
 
 (declare-function apropos-parse-pattern "apropos" (pattern))
 

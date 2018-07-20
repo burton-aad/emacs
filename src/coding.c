@@ -1,5 +1,5 @@
 /* Coding system handler (conversion, detection, etc).
-   Copyright (C) 2001-2017 Free Software Foundation, Inc.
+   Copyright (C) 2001-2018 Free Software Foundation, Inc.
    Copyright (C) 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
      2005, 2006, 2007, 2008, 2009, 2010, 2011
      National Institute of Advanced Industrial Science and Technology (AIST)
@@ -252,7 +252,7 @@ decode_coding_XXXX (struct coding_system *coding)
   CODING_RESULT_XXX indicating how the encoding finished.
 
   DST_BYTES zero means that source area and destination area are
-  overlapped, which means that we can produce a encoded text until it
+  overlapped, which means that we can produce an encoded text until it
   reaches at the head of not-yet-encoded source text.
 
   Below is a template of these functions.  */
@@ -1225,7 +1225,10 @@ detect_coding_utf_8 (struct coding_system *coding,
       ONE_MORE_BYTE (c4);
       if (c4 < 0 || ! UTF_8_EXTRA_OCTET_P (c4))
 	break;
-      if (UTF_8_5_OCTET_LEADING_P (c))
+      if (UTF_8_5_OCTET_LEADING_P (c)
+	  /* If we ever need to increase MAX_CHAR, the below may need
+	     to be reviewed.  */
+	  && c < MAX_MULTIBYTE_LEADING_CODE)
 	{
 	  nchars++;
 	  continue;
@@ -1514,13 +1517,6 @@ encode_coding_utf_8 (struct coding_system *coding)
 
 /* See the above "GENERAL NOTES on `detect_coding_XXX ()' functions".
    Return true if a text is encoded in one of UTF-16 based coding systems.  */
-
-#define UTF_16_HIGH_SURROGATE_P(val) \
-  (((val) & 0xFC00) == 0xD800)
-
-#define UTF_16_LOW_SURROGATE_P(val) \
-  (((val) & 0xFC00) == 0xDC00)
-
 
 static bool
 detect_coding_utf_16 (struct coding_system *coding,
@@ -3980,7 +3976,7 @@ decode_coding_iso_2022 (struct coding_system *coding)
       /* Reset the invocation and designation status to the safest
 	 one; i.e. designate ASCII to the graphic register 0, and
 	 invoke that register to the graphic plane 0.  This typically
-	 helps the case that an designation sequence for ASCII "ESC (
+	 helps the case that a designation sequence for ASCII "ESC (
 	 B" is somehow broken (e.g. broken by a newline).  */
       CODING_ISO_INVOCATION (coding, 0) = 0;
       CODING_ISO_DESIGNATION (coding, 0) = charset_ascii;
@@ -6360,6 +6356,27 @@ check_utf_8 (struct coding_system *coding)
 }
 
 
+/* Return whether STRING is a valid UTF-8 string.  STRING must be a
+   unibyte string.  */
+
+bool
+utf8_string_p (Lisp_Object string)
+{
+  eassert (!STRING_MULTIBYTE (string));
+  struct coding_system coding;
+  setup_coding_system (Qutf_8_unix, &coding);
+  /* We initialize only the fields that check_utf_8 accesses.  */
+  coding.head_ascii = -1;
+  coding.src_pos = 0;
+  coding.src_pos_byte = 0;
+  coding.src_chars = SCHARS (string);
+  coding.src_bytes = SBYTES (string);
+  coding.src_object = string;
+  coding.eol_seen = EOL_SEEN_NONE;
+  return check_utf_8 (&coding) != -1;
+}
+
+
 /* Detect how end-of-line of a text of length SRC_BYTES pointed by
    SOURCE is encoded.  If CATEGORY is one of
    coding_category_utf_16_XXXX, assume that CR and LF are encoded by
@@ -7423,10 +7440,23 @@ decode_coding (struct coding_system *coding)
 
 	  while (nbytes-- > 0)
 	    {
-	      int c = *src++;
+	      int c;
 
-	      if (c & 0x80)
-		c = BYTE8_TO_CHAR (c);
+	      /* Copy raw bytes in their 2-byte forms from multibyte
+		 text as single characters.  */
+	      if (coding->src_multibyte
+		  && CHAR_BYTE8_HEAD_P (*src) && nbytes > 0)
+		{
+		  c = STRING_CHAR_ADVANCE (src);
+		  nbytes--;
+		}
+	      else
+		{
+		  c = *src++;
+
+		  if (c & 0x80)
+		    c = BYTE8_TO_CHAR (c);
+		}
 	      coding->charbuf[coding->charbuf_used++] = c;
 	    }
 	  produce_chars (coding, Qnil, 1);
@@ -7975,7 +8005,6 @@ decode_coding_gap (struct coding_system *coding,
       ptrdiff_t prev_Z = Z, prev_Z_BYTE = Z_BYTE;
       Lisp_Object val;
       Lisp_Object undo_list = BVAR (current_buffer, undo_list);
-      ptrdiff_t count1 = SPECPDL_INDEX ();
 
       record_unwind_protect (coding_restore_undo_list,
 			     Fcons (undo_list, Fcurrent_buffer ()));
@@ -7986,7 +8015,6 @@ decode_coding_gap (struct coding_system *coding,
       CHECK_NATNUM (val);
       coding->produced_char += Z - prev_Z;
       coding->produced += Z_BYTE - prev_Z_BYTE;
-      unbind_to (count1, Qnil);
     }
 
   unbind_to (count, Qnil);
@@ -8515,7 +8543,7 @@ are lower-case).  */)
   val = Fcompleting_read (prompt, Vcoding_system_alist, Qnil,
 			  Qt, Qnil, Qcoding_system_history,
 			  default_coding_system, Qnil);
-  unbind_to (count, Qnil);
+  val = unbind_to (count, val);
   return (SCHARS (val) == 0 ? Qnil : Fintern (val, Qnil));
 }
 
@@ -10846,6 +10874,7 @@ syms_of_coding (void)
   DEFSYM (Qiso_2022, "iso-2022");
 
   DEFSYM (Qutf_8, "utf-8");
+  DEFSYM (Qutf_8_unix, "utf-8-unix");
   DEFSYM (Qutf_8_emacs, "utf-8-emacs");
 
 #if defined (WINDOWSNT) || defined (CYGWIN)

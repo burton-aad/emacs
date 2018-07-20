@@ -1,6 +1,6 @@
 ;;; cc-vars.el --- user customization variables for CC Mode
 
-;; Copyright (C) 1985, 1987, 1992-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1985, 1987, 1992-2018 Free Software Foundation, Inc.
 
 ;; Authors:    2002- Alan Mackenzie
 ;;             1998- Martin Stjernholm
@@ -1641,13 +1641,15 @@ In the fontification engine, it is sometimes impossible to determine
 whether a construct is a declaration or an expression.  This happens
 particularly in C++, due to ambiguities in the language.  When such a
 construct is like \"foo * bar\" or \"foo &bar\", and this variable is non-nil
-(the default), the construct will be fontified as a declaration if there is
+\(the default), the construct will be fontified as a declaration if there is
 white space either before or after the operator, but not both."
+  :version "26.1"
   :type 'boolean
   :group 'c)
 
-(defvar c-noise-macro-with-parens-name-re "\\<\\>")
-(defvar c-noise-macro-name-re "\\<\\>")
+;; Initialize the next two to a regexp which never matches.
+(defvar c-noise-macro-with-parens-name-re "a\\`")
+(defvar c-noise-macro-name-re "a\\`")
 
 (defcustom c-noise-macro-names nil
   "A list of names of macros which expand to nothing, or compiler extensions
@@ -1658,6 +1660,7 @@ identifiers.
 If you change this variable's value, call the function
 `c-make-noise-macro-regexps' to set the necessary internal variables (or do
 this implicitly by reinitializing C/C++/Objc Mode on any buffer)."
+  :version "26.1"
   :type '(repeat :tag "List of names" string)
   :group 'c)
 (put 'c-noise-macro-names 'safe-local-variable #'c-string-list-p)
@@ -1666,7 +1669,8 @@ this implicitly by reinitializing C/C++/Objc Mode on any buffer)."
   "A list of names of macros \(or compiler extensions like \"__attribute__\")
 which optionally have arguments in parentheses, and which expand to nothing.
 These are recognized by CC Mode only in declarations."
-  :type '(regexp :tag "List of names (possibly empty)" string)
+  :version "26.1"
+  :type '(repeat :tag "List of names (possibly empty)" string)
   :group 'c)
 (put 'c-noise-macro-with-parens-names 'safe-local-variable #'c-string-list-p)
 
@@ -1674,7 +1678,7 @@ These are recognized by CC Mode only in declarations."
   ;; Convert `c-noise-macro-names' and `c-noise-macro-with-parens-names' into
   ;; `c-noise-macro-name-re' and `c-noise-macro-with-parens-name-re'.
   (setq c-noise-macro-with-parens-name-re
-	(cond ((null c-noise-macro-with-parens-names) "\\<\\>")
+	(cond ((null c-noise-macro-with-parens-names) "a\\`") ; Never matches.
 	      ((consp c-noise-macro-with-parens-names)
 	       (concat (regexp-opt c-noise-macro-with-parens-names t)
 		       "\\([^[:alnum:]_$]\\|$\\)"))
@@ -1683,7 +1687,7 @@ These are recognized by CC Mode only in declarations."
 	      (t (error "c-make-noise-macro-regexps: \
 c-noise-macro-with-parens-names is invalid: %s" c-noise-macro-with-parens-names))))
   (setq c-noise-macro-name-re
-	(cond ((null c-noise-macro-names) "\\<\\>")
+	(cond ((null c-noise-macro-names) "a\\`") ; Never matches anything.
 	      ((consp c-noise-macro-names)
 	       (concat (regexp-opt c-noise-macro-names t)
 		       "\\([^[:alnum:]_$]\\|$\\)"))

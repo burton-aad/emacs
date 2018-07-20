@@ -1,5 +1,5 @@
 /* Font driver on macOS Core text.
-   Copyright (C) 2009-2017 Free Software Foundation, Inc.
+   Copyright (C) 2009-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -908,7 +908,8 @@ macfont_descriptor_entity (CTFontDescriptorRef desc, Lisp_Object extra,
   ASET (entity, FONT_EXTRA_INDEX, Fcopy_sequence (extra));
   name = CTFontDescriptorCopyAttribute (desc, kCTFontNameAttribute);
   font_put_extra (entity, QCfont_entity,
-                  make_save_ptr_int ((void *) name, sym_traits));
+		  Fcons (make_mint_ptr ((void *) name),
+			 make_number (sym_traits)));
   if (synth_sym_traits & kCTFontTraitItalic)
     FONT_SET_STYLE (entity, FONT_SLANT_INDEX,
                     make_number (FONT_SLANT_SYNTHETIC_ITALIC));
@@ -943,8 +944,8 @@ macfont_invalidate_family_cache (void)
 	  {
 	    Lisp_Object value = HASH_VALUE (h, i);
 
-	    if (SAVE_VALUEP (value))
-	      CFRelease (XSAVE_POINTER (value, 0));
+	    if (mint_ptrp (value))
+	      CFRelease (xmint_pointer (value));
 	  }
       macfont_family_cache = Qnil;
     }
@@ -962,7 +963,7 @@ macfont_get_family_cache_if_present (Lisp_Object symbol, CFStringRef *string)
 	{
 	  Lisp_Object value = HASH_VALUE (h, i);
 
-	  *string = SAVE_VALUEP (value) ? XSAVE_POINTER (value, 0) : NULL;
+	  *string = mint_ptrp (value) ? xmint_pointer (value) : NULL;
 
 	  return true;
 	}
@@ -984,13 +985,13 @@ macfont_set_family_cache (Lisp_Object symbol, CFStringRef string)
 
   h = XHASH_TABLE (macfont_family_cache);
   i = hash_lookup (h, symbol, &hash);
-  value = string ? make_save_ptr ((void *) CFRetain (string)) : Qnil;
+  value = string ? make_mint_ptr ((void *) CFRetain (string)) : Qnil;
   if (i >= 0)
     {
       Lisp_Object old_value = HASH_VALUE (h, i);
 
-      if (SAVE_VALUEP (old_value))
-	CFRelease (XSAVE_POINTER (old_value, 0));
+      if (mint_ptrp (old_value))
+	CFRelease (xmint_pointer (old_value));
       set_hash_value_slot (h, i, value);
     }
   else
@@ -1441,8 +1442,7 @@ macfont_get_glyph_for_character (struct font *font, UTF32Char c)
           CGGlyph *glyphs;
           int i, len;
           int nrows;
-          dispatch_queue_t queue;
-          dispatch_group_t group = NULL;
+          int nkeys;
 
           if (row != 0)
             {
@@ -1479,23 +1479,16 @@ macfont_get_glyph_for_character (struct font *font, UTF32Char c)
                   return glyph;
                 }
 
-              queue =
-                dispatch_get_global_queue (DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
-              group = dispatch_group_create ();
-              dispatch_group_async (group, queue, ^{
-                  int nkeys;
-                  uintptr_t key;
-                  nkeys = nkeys_or_perm;
-                  for (key = row * (256 / NGLYPHS_IN_VALUE); ; key++)
-                    if (CFDictionaryContainsKey (dictionary,
-                                                 (const void *) key))
-                      {
-                        CFDictionaryRemoveValue (dictionary,
-                                                 (const void *) key);
-                        if (--nkeys == 0)
-                          break;
-                      }
-                });
+              nkeys = nkeys_or_perm;
+              for (key = row * (256 / NGLYPHS_IN_VALUE); ; key++)
+                if (CFDictionaryContainsKey (dictionary,
+                                             (const void *) key))
+                  {
+                    CFDictionaryRemoveValue (dictionary,
+                                             (const void *) key);
+                    if (--nkeys == 0)
+                      break;
+                  }
             }
 
           len = 0;
@@ -1535,12 +1528,6 @@ macfont_get_glyph_for_character (struct font *font, UTF32Char c)
                                           sizeof (CGGlyph *) * nrows);
           cache->glyph.matrix[nrows - 1] = glyphs;
           cache->glyph.nrows = nrows;
-
-          if (group)
-            {
-              dispatch_group_wait (group, DISPATCH_TIME_FOREVER);
-              dispatch_release (group);
-            }
         }
 
       return cache->glyph.matrix[nkeys_or_perm - ROW_PERM_OFFSET][c % 256];
@@ -2519,7 +2506,7 @@ macfont_free_entity (Lisp_Object entity)
 {
   Lisp_Object val = assq_no_quit (QCfont_entity,
                                   AREF (entity, FONT_EXTRA_INDEX));
-  CFStringRef name = XSAVE_POINTER (XCDR (val), 0);
+  CFStringRef name = xmint_pointer (XCAR (XCDR (val)));
 
   block_input ();
   CFRelease (name);
@@ -2542,11 +2529,10 @@ macfont_open (struct frame * f, Lisp_Object entity, int pixel_size)
 
   val = assq_no_quit (QCfont_entity, AREF (entity, FONT_EXTRA_INDEX));
   if (! CONSP (val)
-      || XTYPE (XCDR (val)) != Lisp_Misc
-      || XMISCTYPE (XCDR (val)) != Lisp_Misc_Save_Value)
+      || ! CONSP (XCDR (val)))
     return Qnil;
-  font_name = XSAVE_POINTER (XCDR (val), 0);
-  sym_traits = XSAVE_INTEGER (XCDR (val), 1);
+  font_name = xmint_pointer (XCAR (XCDR (val)));
+  sym_traits = XINT (XCDR (XCDR (val)));
 
   size = XINT (AREF (entity, FONT_SIZE_INDEX));
   if (size == 0)
@@ -2725,7 +2711,7 @@ macfont_has_char (Lisp_Object font, int c)
 
       val = assq_no_quit (QCfont_entity, AREF (font, FONT_EXTRA_INDEX));
       val = XCDR (val);
-      name = XSAVE_POINTER (val, 0);
+      name = xmint_pointer (XCAR (val));
       charset = macfont_get_cf_charset_for_name (name);
     }
   else
@@ -3267,9 +3253,6 @@ mac_font_get_glyphs_for_variants (CFDataRef uvs_table, UTF32Char c,
   struct variation_selector_record *records = uvs->variation_selector_records;
   CFIndex i;
   UInt32 ir, nrecords;
-  dispatch_queue_t queue =
-    dispatch_get_global_queue (DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
-  dispatch_group_t group = dispatch_group_create ();
 
   nrecords = BUINT32_VALUE (uvs->num_var_selector_records);
   i = 0;
@@ -3293,66 +3276,63 @@ mac_font_get_glyphs_for_variants (CFDataRef uvs_table, UTF32Char c,
       default_uvs_offset = BUINT32_VALUE (records[ir].default_uvs_offset);
       non_default_uvs_offset =
         BUINT32_VALUE (records[ir].non_default_uvs_offset);
-      dispatch_group_async (group, queue, ^{
-          glyphs[i] = kCGFontIndexInvalid;
 
-          if (default_uvs_offset)
+      glyphs[i] = kCGFontIndexInvalid;
+
+      if (default_uvs_offset)
+        {
+          struct default_uvs_table *default_uvs =
+            (struct default_uvs_table *) ((UInt8 *) uvs
+                                          + default_uvs_offset);
+          struct unicode_value_range *ranges =
+            default_uvs->unicode_value_ranges;
+          UInt32 lo, hi;
+
+          lo = 0;
+          hi = BUINT32_VALUE (default_uvs->num_unicode_value_ranges);
+          while (lo < hi)
             {
-              struct default_uvs_table *default_uvs =
-                (struct default_uvs_table *) ((UInt8 *) uvs
-                                              + default_uvs_offset);
-              struct unicode_value_range *ranges =
-                default_uvs->unicode_value_ranges;
-              UInt32 lo, hi;
+              UInt32 mid = (lo + hi) / 2;
 
-              lo = 0;
-              hi = BUINT32_VALUE (default_uvs->num_unicode_value_ranges);
-              while (lo < hi)
-                {
-                  UInt32 mid = (lo + hi) / 2;
-
-                  if (c < BUINT24_VALUE (ranges[mid].start_unicode_value))
-                    hi = mid;
-                  else
-                    lo = mid + 1;
-                }
-              if (hi > 0
-                  && (c <= (BUINT24_VALUE (ranges[hi - 1].start_unicode_value)
-                            + BUINT8_VALUE (ranges[hi - 1].additional_count))))
-                glyphs[i] = 0;
+              if (c < BUINT24_VALUE (ranges[mid].start_unicode_value))
+                hi = mid;
+              else
+                lo = mid + 1;
             }
+          if (hi > 0
+              && (c <= (BUINT24_VALUE (ranges[hi - 1].start_unicode_value)
+                        + BUINT8_VALUE (ranges[hi - 1].additional_count))))
+            glyphs[i] = 0;
+        }
 
-          if (glyphs[i] == kCGFontIndexInvalid && non_default_uvs_offset)
+      if (glyphs[i] == kCGFontIndexInvalid && non_default_uvs_offset)
+        {
+          struct non_default_uvs_table *non_default_uvs =
+            (struct non_default_uvs_table *) ((UInt8 *) uvs
+                                              + non_default_uvs_offset);
+          struct uvs_mapping *mappings = non_default_uvs->uvs_mappings;
+          UInt32 lo, hi;
+
+          lo = 0;
+          hi = BUINT32_VALUE (non_default_uvs->num_uvs_mappings);
+          while (lo < hi)
             {
-              struct non_default_uvs_table *non_default_uvs =
-                (struct non_default_uvs_table *) ((UInt8 *) uvs
-                                                  + non_default_uvs_offset);
-              struct uvs_mapping *mappings = non_default_uvs->uvs_mappings;
-              UInt32 lo, hi;
+              UInt32 mid = (lo + hi) / 2;
 
-              lo = 0;
-              hi = BUINT32_VALUE (non_default_uvs->num_uvs_mappings);
-              while (lo < hi)
-                {
-                  UInt32 mid = (lo + hi) / 2;
-
-                  if (c < BUINT24_VALUE (mappings[mid].unicode_value))
-                    hi = mid;
-                  else
-                    lo = mid + 1;
-                }
-              if (hi > 0 &&
-                  BUINT24_VALUE (mappings[hi - 1].unicode_value) == c)
-                glyphs[i] = BUINT16_VALUE (mappings[hi - 1].glyph_id);
+              if (c < BUINT24_VALUE (mappings[mid].unicode_value))
+                hi = mid;
+              else
+                lo = mid + 1;
             }
-        });
+          if (hi > 0 &&
+              BUINT24_VALUE (mappings[hi - 1].unicode_value) == c)
+            glyphs[i] = BUINT16_VALUE (mappings[hi - 1].glyph_id);
+        }
       i++;
       ir++;
     }
   while (i < count)
     glyphs[i++] = kCGFontIndexInvalid;
-  dispatch_group_wait (group, DISPATCH_TIME_FOREVER);
-  dispatch_release (group);
 }
 
 static int

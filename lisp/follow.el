@@ -1,6 +1,6 @@
 ;;; follow.el --- synchronize windows showing the same buffer
 
-;; Copyright (C) 1995-1997, 1999, 2001-2017 Free Software Foundation,
+;; Copyright (C) 1995-1997, 1999, 2001-2018 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Anders Lindgren
@@ -383,9 +383,6 @@ This is typically set by explicit scrolling commands.")
 ;;;###autoload
 (define-minor-mode follow-mode
   "Toggle Follow mode.
-With a prefix argument ARG, enable Follow mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 Follow mode is a minor mode that combines windows into one tall
 virtual window.  This is accomplished by two main techniques:

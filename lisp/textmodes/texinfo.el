@@ -1,6 +1,6 @@
 ;;; texinfo.el --- major mode for editing Texinfo files
 
-;; Copyright (C) 1985, 1988-1993, 1996-1997, 2000-2017 Free Software
+;; Copyright (C) 1985, 1988-1993, 1996-1997, 2000-2018 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Robert J. Chassell
@@ -596,9 +596,9 @@ value of `texinfo-mode-hook'."
   (setq-local require-final-newline mode-require-final-newline)
   (setq-local indent-tabs-mode nil)
   (setq-local paragraph-separate
-	      (concat "\b\\|@[a-zA-Z]*[ \n]\\|"
+	      (concat "@[a-zA-Z]*[ \n]\\|"
 		      paragraph-separate))
-  (setq-local paragraph-start (concat "\b\\|@[a-zA-Z]*[ \n]\\|"
+  (setq-local paragraph-start (concat "@[a-zA-Z]*[ \n]\\|"
 				      paragraph-start))
   (setq-local sentence-end-base "\\(@\\(end\\)?dots{}\\|[.?!]\\)[]\"'”)}]*")
   (setq-local fill-column 70)
@@ -610,7 +610,6 @@ value of `texinfo-mode-hook'."
   (setq font-lock-defaults
 	'(texinfo-font-lock-keywords nil nil nil backward-paragraph))
   (setq-local syntax-propertize-function texinfo-syntax-propertize-function)
-  (setq-local parse-sexp-lookup-properties t)
   (setq-local add-log-current-defun-function #'texinfo-current-defun-name)
 
   ;; Outline settings.

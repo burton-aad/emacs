@@ -1,6 +1,6 @@
 ;;; rx.el --- sexp notation for regular expressions
 
-;; Copyright (C) 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2001-2018 Free Software Foundation, Inc.
 
 ;; Author: Gerd Moellmann <gerd@gnu.org>
 ;; Maintainer: emacs-devel@gnu.org
@@ -57,7 +57,6 @@
 ;; (rx (and line-start (0+ (in "a-z"))))
 ;;
 ;; "\n[^ \t]"
-;; (rx (and "\n" (not blank))), or
 ;; (rx (and "\n" (not (any " \t"))))
 ;;
 ;; "\\*\\*\\* EOOH \\*\\*\\*\n"
@@ -74,9 +73,9 @@
 ;; "^content-transfer-encoding:\\(\n?[\t ]\\)*quoted-printable\\(\n?[\t ]\\)*"
 ;; (rx (and line-start
 ;;          "content-transfer-encoding:"
-;;          (+ (? ?\n)) blank
+;;          (+ (? ?\n)) (any " \t")
 ;;	    "quoted-printable"
-;;	    (+ (? ?\n)) blank))
+;;	    (+ (? ?\n)) (any " \t"))
 ;;
 ;; (concat "^\\(?:" something-else "\\)")
 ;; (rx (and line-start (eval something-else))), statically or
@@ -106,6 +105,8 @@
 ;;
 
 ;;; Code:
+
+(require 'cl-lib)
 
 ;; FIXME: support macros.
 
@@ -962,7 +963,11 @@ CHAR
      matches 0 through 9, a through f and A through F.
 
 `blank'
-     matches space and tab only.
+     matches horizontal whitespace, as defined by Annex C of the
+     Unicode Technical Standard #18.  In particular, it matches
+     spaces, tabs, and other characters whose Unicode
+     `general-category' property indicates they are spacing
+     separators.
 
 `graphic', `graph'
      matches graphic characters--everything except whitespace, ASCII
@@ -973,12 +978,14 @@ CHAR
      matches whitespace and graphic characters.
 
 `alphanumeric', `alnum'
-     matches alphabetic characters and digits.  (For multibyte characters,
-     it matches according to Unicode character properties.)
+     matches alphabetic characters and digits.  For multibyte characters,
+     it matches characters whose Unicode `general-category' property
+     indicates they are alphabetic or decimal number characters.
 
 `letter', `alphabetic', `alpha'
-     matches alphabetic characters.  (For multibyte characters,
-     it matches according to Unicode character properties.)
+     matches alphabetic characters.  For multibyte characters,
+     it matches characters whose Unicode `general-category' property
+     indicates they are alphabetic characters.
 
 `ascii'
      matches ASCII (unibyte) characters.
@@ -987,10 +994,14 @@ CHAR
      matches non-ASCII (multibyte) characters.
 
 `lower', `lower-case'
-     matches anything lower-case.
+     matches anything lower-case, as determined by the current case
+     table.  If `case-fold-search' is non-nil, this also matches any
+     upper-case letter.
 
 `upper', `upper-case'
-     matches anything upper-case.
+     matches anything upper-case, as determined by the current case
+     table.  If `case-fold-search' is non-nil, this also matches any
+     lower-case letter.
 
 `punctuation', `punct'
      matches punctuation.  (But at present, for multibyte characters,
@@ -1174,7 +1185,7 @@ enclosed in `(and ...)'.
 (pcase-defmacro rx (&rest regexps)
   "Build a `pcase' pattern matching `rx' regexps.
 The REGEXPS are interpreted as by `rx'.  The pattern matches if
-the regular expression so constructed matches the object, as if
+the regular expression so constructed matches EXPVAL, as if
 by `string-match'.
 
 In addition to the usual `rx' constructs, REGEXPS can contain the

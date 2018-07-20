@@ -1,6 +1,6 @@
 ;;; pcvs.el --- a front-end to CVS  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1991-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1991-2018 Free Software Foundation, Inc.
 
 ;; Author: The PCL-CVS Trust <pcl-cvs@cyclic.com>
 ;;	Per Cederqvist <ceder@lysator.liu.se>
@@ -700,7 +700,7 @@ OLD-FIS is the list of fileinfos on which the cvs command was applied and
     ;; because of the call to `process-send-eof'.
     (save-excursion
       (goto-char (point-min))
-      (while (re-search-forward "^\\^D+" nil t)
+      (while (re-search-forward "^\\^D\^H+" nil t)
 	(let ((inhibit-read-only t))
 	  (delete-region (match-beginning 0) (match-end 0))))))
   (let* ((fileinfos (cvs-parse-buffer 'cvs-parse-table dcd subdir))

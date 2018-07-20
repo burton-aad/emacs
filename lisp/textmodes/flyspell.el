@@ -1,6 +1,6 @@
 ;;; flyspell.el --- On-the-fly spell checker  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1998, 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1998, 2000-2018 Free Software Foundation, Inc.
 
 ;; Author: Manuel Serrano <Manuel.Serrano@sophia.inria.fr>
 ;; Maintainer: emacs-devel@gnu.org
@@ -31,10 +31,10 @@
 ;;
 ;; To enable Flyspell in text representing computer programs, type
 ;; M-x flyspell-prog-mode.
-;; In that mode only text inside comments is checked.
+;; In that mode only text inside comments and strings is checked.
 ;;
 ;; Some user variables control the behavior of flyspell.  They are
-;; those defined under the `User variables' comment.
+;; those defined under the `User configuration' comment.
 
 ;;; Code:
 
@@ -137,7 +137,8 @@ This variable specifies how far to search to find such a duplicate.
 (defcustom flyspell-persistent-highlight t
   "Non-nil means misspelled words remain highlighted until corrected.
 If this variable is nil, only the most recently detected misspelled word
-is highlighted."
+is highlighted, and the highlight is turned off as soon as point moves
+off the misspelled word."
   :group 'flyspell
   :type 'boolean)
 
@@ -321,14 +322,16 @@ If this variable is nil, all regions are treated as small."
 ;;*    	     (lambda () (setq flyspell-generic-check-word-predicate     */
 ;;*    			       'mail-mode-flyspell-verify)))            */
 ;;*---------------------------------------------------------------------*/
+
+(define-obsolete-variable-alias 'flyspell-generic-check-word-p
+  'flyspell-generic-check-word-predicate "25.1")
+
 (defvar flyspell-generic-check-word-predicate nil
   "Function providing per-mode customization over which words are flyspelled.
 Returns t to continue checking, nil otherwise.
 Flyspell mode sets this variable to whatever is the `flyspell-mode-predicate'
 property of the major mode name.")
 (make-variable-buffer-local 'flyspell-generic-check-word-predicate)
-(define-obsolete-variable-alias 'flyspell-generic-check-word-p
-  'flyspell-generic-check-word-predicate "25.1")
 
 ;;*--- mail mode -------------------------------------------------------*/
 (put 'mail-mode 'flyspell-mode-predicate 'mail-mode-flyspell-verify)
@@ -503,9 +506,6 @@ See also `flyspell-duplicate-distance'."
 ;;;###autoload
 (define-minor-mode flyspell-mode
   "Toggle on-the-fly spell checking (Flyspell mode).
-With a prefix argument ARG, enable Flyspell mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 Flyspell mode is a buffer-local minor mode.  When enabled, it
 spawns a single Ispell process and checks each word.  The default
@@ -982,6 +982,11 @@ Mostly we check word delimiters."
       (let ((command this-command)
             ;; Prevent anything we do from affecting the mark.
             deactivate-mark)
+        (if (and (eq command 'transpose-chars)
+                 flyspell-pre-point)
+            (save-excursion
+              (goto-char (- flyspell-pre-point 1))
+              (flyspell-word)))
         (if (flyspell-check-pre-word-p)
             (save-excursion
               '(flyspell-debug-signal-pre-word-checked)
@@ -1103,7 +1108,10 @@ If the optional argument FOLLOWING, or, when called interactively
 `ispell-following-word', is non-nil, checks the following (rather
 than preceding) word when the cursor is not over a word.  If
 optional argument KNOWN-MISSPELLING is non nil considers word a
-misspelling and skips redundant spell-checking step."
+misspelling and skips redundant spell-checking step.
+
+See `flyspell-get-word' for details of how this finds the word to
+spell-check."
   (interactive (list ispell-following-word))
   (ispell-set-spellchecker-params)    ; Initialize variables and dicts alists
   (save-excursion
@@ -1302,7 +1310,13 @@ misspelling and skips redundant spell-checking step."
 Optional argument FOLLOWING non-nil means to get the following
 \(rather than preceding) word when the cursor is not over a word.
 Optional second argument EXTRA-OTHERCHARS is a regexp of characters
-that may be included as part of a word (see `ispell-dictionary-alist')."
+that may be included as part of a word (see `ispell-dictionary-alist').
+
+This finds the word to spell-check by searching for CASECHARS defined
+in `ispell-dictionary-alist' for the current dictionary.  Thus, the
+word could be far away from point if point is inside whitespace or
+punctuation characters, or in text that belongs to a different
+language."
   (let* ((flyspell-casechars (flyspell-get-casechars))
 	 (flyspell-not-casechars (flyspell-get-not-casechars))
 	 (ispell-otherchars (ispell-get-otherchars))
@@ -1732,7 +1746,7 @@ FLYSPELL-BUFFER."
 ;;*---------------------------------------------------------------------*/
 ;;*    flyspell-properties-at-p ...                                     */
 ;;*    -------------------------------------------------------------    */
-;;*    Is there an highlight properties at position pos?                */
+;;*    Is there a highlight property at position pos?                   */
 ;;*---------------------------------------------------------------------*/
 (defun flyspell-properties-at-p (pos)
   "Return t if there is a text property at POS, not counting `local-map'.
@@ -1917,7 +1931,12 @@ before point that's highlighted as misspelled."
 ;;*---------------------------------------------------------------------*/
 (defun flyspell-auto-correct-word ()
   "Correct the current word.
-This command proposes various successive corrections for the current word."
+This command proposes various successive corrections for the
+current word.  If invoked repeatedly on the same position, it
+cycles through the possible corrections of the current word.
+
+See `flyspell-get-word' for details of how this finds the word to
+spell-check."
   (interactive)
   ;; If we are not in the construct where flyspell should be active,
   ;; invoke the original binding of M-TAB, if that was recorded.
@@ -1930,6 +1949,11 @@ This command proposes various successive corrections for the current word."
       (call-interactively flyspell--prev-meta-tab-binding)
     (let ((pos     (point))
           (old-max (point-max)))
+      ;; Flush a possibly stale cache from previous invocations of
+      ;; flyspell-auto-correct-word/flyspell-auto-correct-previous-word.
+      (if (not (memq last-command '(flyspell-auto-correct-word
+                                    flyspell-auto-correct-previous-word)))
+          (setq flyspell-auto-correct-region nil))
       ;; Use the correct dictionary.
       (flyspell-accept-buffer-local-defs)
       (if (and (eq flyspell-auto-correct-pos pos)
@@ -1997,7 +2021,7 @@ This command proposes various successive corrections for the current word."
                             (let ((new-word replace))
                               (if (not (equal new-word (car poss)))
                                   (progn
-                                    ;; the save the current replacements
+                                    ;; then save the current replacements
                                     (setq flyspell-auto-correct-region
                                           (cons start (length new-word)))
                                     (let ((l replacements))

@@ -1,5 +1,5 @@
 /* Terminal hooks for GNU Emacs on the Microsoft Windows API.
-   Copyright (C) 1992, 1999, 2001-2017 Free Software Foundation, Inc.
+   Copyright (C) 1992, 1999, 2001-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -793,7 +793,7 @@ Arguments should be indices between 0 and 15, see w32console.el.  */)
 {
   char_attr_normal = XFASTINT (foreground) + (XFASTINT (background) << 4);
 
-  Frecenter (Qnil);
+  Frecenter (Qnil, Qt);
   return Qt;
 }
 

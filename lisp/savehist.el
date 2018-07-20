@@ -1,6 +1,6 @@
 ;;; savehist.el --- Save minibuffer history
 
-;; Copyright (C) 1997, 2005-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1997, 2005-2018 Free Software Foundation, Inc.
 
 ;; Author: Hrvoje Niksic <hniksic@xemacs.org>
 ;; Maintainer: emacs-devel@gnu.org
@@ -171,9 +171,6 @@ minibuffer history.")
 ;;;###autoload
 (define-minor-mode savehist-mode
   "Toggle saving of minibuffer history (Savehist mode).
-With a prefix argument ARG, enable Savehist mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 When Savehist mode is enabled, minibuffer history is saved
 periodically and when exiting Emacs.  When Savehist mode is
@@ -203,29 +200,6 @@ histories, which is probably undesirable."
 	 (savehist-uninstall)
 	 (signal (car errvar) (cdr errvar)))))
     (savehist-install)))
-
-(defun savehist-load ()
-  "Load the variables stored in `savehist-file' and turn on Savehist mode.
-If `savehist-file' is in the old format that doesn't record
-the value of `savehist-minibuffer-history-variables', that
-value is deducted from the contents of the file."
-  (declare (obsolete savehist-mode "22.1"))
-  (savehist-mode 1)
-  ;; Old versions of savehist distributed with XEmacs didn't save
-  ;; savehist-minibuffer-history-variables.  If that variable is nil
-  ;; after loading the file, try to intuit the intended value.
-  (when (null savehist-minibuffer-history-variables)
-    (setq savehist-minibuffer-history-variables
-          (with-temp-buffer
-	    (ignore-errors
-	      (insert-file-contents savehist-file))
-            (let ((vars ()) form)
-              (while (setq form (condition-case nil
-				    (read (current-buffer)) (error nil)))
-		;; Each form read is of the form (setq VAR VALUE).
-		;; Collect VAR, i.e. (nth form 1).
-                (push (nth 1 form) vars))
-              vars)))))
 
 (defun savehist-install ()
   "Hook Savehist into Emacs.

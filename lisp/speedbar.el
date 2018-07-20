@@ -1,6 +1,6 @@
 ;;; speedbar --- quick access to files and tags in a frame
 
-;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2018 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Keywords: file, tags, tools
@@ -637,9 +637,6 @@ Created from `speedbar-ignored-directory-expressions' with the function
 Use the function `speedbar-add-ignored-directory-regexp', or customize the
 variable `speedbar-ignored-directory-expressions' to modify this variable.")
 
-(define-obsolete-variable-alias 'speedbar-ignored-path-expressions
-  'speedbar-ignored-directory-expressions "22.1")
-
 (defcustom speedbar-ignored-directory-expressions
   '("[/\\]logs?[/\\]\\'")
   "List of regular expressions matching directories speedbar will ignore.
@@ -743,13 +740,6 @@ DIRECTORY-EXPRESSION to `speedbar-ignored-directory-expressions'."
     (setq directory-expression (cdr directory-expression)))
   (setq speedbar-ignored-directory-regexp (speedbar-extension-list-to-regex
 				      speedbar-ignored-directory-expressions)))
-
-;; If we don't have custom, then we set it here by hand.
-(if (not (fboundp 'custom-declare-variable))
-    (setq speedbar-file-regexp (speedbar-extension-list-to-regex
-				speedbar-supported-extension-expressions)
-	  speedbar-ignored-directory-regexp (speedbar-extension-list-to-regex
-					speedbar-ignored-directory-expressions)))
 
 (defcustom speedbar-update-flag dframe-have-timer-flag
   "Non-nil means to automatically update the display.
@@ -4077,26 +4067,6 @@ TEXT is the buffer's name, TOKEN and INDENT are unused."
 	 (setq font-lock-global-modes (delq 'speedbar-mode
 					    font-lock-global-modes)))))
 
-;;; Obsolete variables and functions
-
-(define-obsolete-variable-alias
-  'speedbar-ignored-path-regexp 'speedbar-ignored-directory-regexp "22.1")
-
-(define-obsolete-function-alias 'speedbar-add-ignored-path-regexp
-  'speedbar-add-ignored-directory-regexp "22.1")
-
-(define-obsolete-function-alias 'speedbar-line-path
-  'speedbar-line-directory "22.1")
-
-(define-obsolete-function-alias 'speedbar-buffers-line-path
-  'speedbar-buffers-line-directory "22.1")
-
-(define-obsolete-function-alias 'speedbar-path-line
-  'speedbar-directory-line "22.1")
-
-(define-obsolete-function-alias 'speedbar-buffers-line-path
-  'speedbar-buffers-line-directory "22.1")
-
 (provide 'speedbar)
 
 ;; run load-time hooks

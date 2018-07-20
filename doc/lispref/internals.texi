@@ -1,6 +1,6 @@
 @c -*-texinfo-*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1993, 1998-1999, 2001-2017 Free Software
+@c Copyright (C) 1990-1993, 1998-1999, 2001-2018 Free Software
 @c Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node GNU Emacs Internals
@@ -507,10 +507,8 @@ function @code{memory-limit} provides information on the total amount of
 memory Emacs is currently using.
 
 @defun memory-limit
-This function returns the address of the last byte Emacs has allocated,
-divided by 1024.  We divide the value by 1024 to make sure it fits in a
-Lisp integer.
-
+This function returns an estimate of the total amount of bytes of
+virtual memory that Emacs is currently using, divided by 1024.
 You can use this to get a general idea of how your actions affect the
 memory usage.
 @end defun
@@ -726,7 +724,8 @@ less than 8.
 @cindex interactive specification in primitives
 @item interactive
 This is an interactive specification, a string such as might be used
-as the argument of @code{interactive} in a Lisp function.  In the case
+as the argument of @code{interactive} in a Lisp function
+(@pxref{Using Interactive}).  In the case
 of @code{or}, it is 0 (a null pointer), indicating that @code{or}
 cannot be called interactively.  A value of @code{""} indicates a
 function that should receive no arguments when called interactively.
@@ -735,11 +734,11 @@ Lisp form.  For example:
 
 @example
 @group
-DEFUN ("foo", Ffoo, Sfoo, 0, UNEVALLED,
+DEFUN ("foo", Ffoo, Sfoo, 0, UNEVALLED, 0
        "(list (read-char-by-name \"Insert character: \")\
               (prefix-numeric-value current-prefix-arg)\
               t))",
-  doc: /* @dots{} /*)
+  doc: /* @dots{} */)
 @end group
 @end example
 
@@ -758,9 +757,53 @@ names in the documentation string from the ones used in the C code.
 @samp{usage:} is required if the function has an unlimited number of
 arguments.
 
+Some primitives have multiple definitions, one per platform (e.g.,
+@code{x-create-frame}).  In such cases, rather than writing the
+same documentation string in each definition, only one definition has
+the actual documentation.  The others have placeholders beginning with
+@samp{SKIP}, which are ignored by the function that parses the
+@file{DOC} file.
+
 All the usual rules for documentation strings in Lisp code
 (@pxref{Documentation Tips}) apply to C code documentation strings
 too.
+
+The documentation string can be followed by a list of C function
+attributes for the C function that implements the primitive, like
+this:
+
+@example
+@group
+DEFUN ("bar", Fbar, Sbar, 0, UNEVALLED, 0
+  doc: /* @dots{} */
+  attributes: @var{attr1} @var{attr2} @dots{})
+@end group
+@end example
+
+@noindent
+You can specify more than a single attribute, one after the other.
+Currently, only the following attributes are recognized:
+
+@table @code
+@item noreturn
+Declares the C function as one that never returns.  This corresponds
+to the C11 keyword @code{_Noreturn} and to @w{@code{__attribute__
+((__noreturn__))}} attribute of GCC (@pxref{Function Attributes,,,
+gcc, Using the GNU Compiler Collection}).
+
+@item const
+Declares that the function does not examine any values except its
+arguments, and has no effects except the return value.  This
+corresponds to @w{@code{__attribute__ ((__const__))}} attribute of
+GCC.
+
+@item noinline
+This corresponds to @w{@code{__attribute__ ((__noinline__))}}
+attribute of GCC, which prevents the function from being considered
+for inlining.  This might be needed, e.g., to countermand effects of
+link-time optimizations on stack-based variables.
+@end table
+
 @end table
 
   After the call to the @code{DEFUN} macro, you must write the
@@ -843,7 +886,7 @@ defined with @code{DEFVAR_BOOL} are automatically added to the list
 @code{byte-boolean-vars} used by the byte compiler.
 
 @cindex defining customization variables in C
-  If you want to make a Lisp variables that is defined in C behave
+  If you want to make a Lisp variable that is defined in C behave
 like one declared with @code{defcustom}, add an appropriate entry to
 @file{cus-start.el}.
 

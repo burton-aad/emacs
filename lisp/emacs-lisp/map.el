@@ -1,6 +1,6 @@
 ;;; map.el --- Map manipulation functions  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2015-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2015-2018 Free Software Foundation, Inc.
 
 ;; Author: Nicolas Petton <nicolas@petton.fr>
 ;; Keywords: convenience, map, hash-table, alist, array
@@ -207,7 +207,7 @@ MAP can be a list, hash-table or array."
 
 (defun map-do (function map)
   "Apply FUNCTION to each element of MAP and return nil.
-FUNCTION.is called with two arguments, the key and the value."
+FUNCTION is called with two arguments, the key and the value."
   (funcall (map--dispatch map
              :list #'map--do-alist
              :hash-table #'maphash

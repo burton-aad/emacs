@@ -1,6 +1,6 @@
 /* Interface definitions for display code.
 
-Copyright (C) 1985, 1993-1994, 1997-2017 Free Software Foundation, Inc.
+Copyright (C) 1985, 1993-1994, 1997-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -2425,7 +2425,7 @@ struct it
   /* Face to use.  */
   int face_id;
 
-  /* Setting of buffer-local variable selective-display-ellipsis.  */
+  /* Setting of buffer-local variable selective-display-ellipses.  */
   bool_bf selective_display_ellipsis_p : 1;
 
   /* True means control characters are translated into the form `^C'
@@ -2466,6 +2466,10 @@ struct it
   /* If true, adjust current glyph so it does not increase current row
      descent/ascent (line-height property).  Reset after this glyph.  */
   bool_bf constrain_row_ascent_descent_p : 1;
+
+  /* If true, glyphs for line number display were already produced for
+     the current row.  */
+  bool_bf line_number_produced_p : 1;
 
   enum line_wrap_method line_wrap;
 
@@ -2645,6 +2649,12 @@ struct it
 
   /* The line number of point's line, or zero if not computed yet.  */
   ptrdiff_t pt_lnum;
+
+  /* Number of pixels to offset tab stops due to width fixup of the
+     first glyph that crosses first_visible_x.  This is only needed on
+     GUI frames, only when display-line-numbers is in effect, and only
+     in hscrolled windows.  */
+  int tab_offset;
 
   /* Left fringe bitmap number (enum fringe_bitmap_type).  */
   unsigned left_user_fringe_bitmap : FRINGE_ID_BITS;
@@ -3424,11 +3434,12 @@ char *choose_face_font (struct frame *, Lisp_Object *, Lisp_Object,
 #ifdef HAVE_WINDOW_SYSTEM
 void prepare_face_for_display (struct frame *, struct face *);
 #endif
-int lookup_named_face (struct frame *, Lisp_Object, bool);
-int lookup_basic_face (struct frame *, int);
+int lookup_named_face (struct window *, struct frame *, Lisp_Object, bool);
+int lookup_basic_face (struct window *, struct frame *, int);
 int smaller_face (struct frame *, int, int);
 int face_with_height (struct frame *, int, int);
-int lookup_derived_face (struct frame *, Lisp_Object, int, bool);
+int lookup_derived_face (struct window *, struct frame *,
+                         Lisp_Object, int, bool);
 void init_frame_faces (struct frame *);
 void free_frame_faces (struct frame *);
 void recompute_basic_faces (struct frame *);
@@ -3438,7 +3449,7 @@ int face_for_overlay_string (struct window *, ptrdiff_t, ptrdiff_t *, ptrdiff_t,
                              bool, Lisp_Object);
 int face_at_string_position (struct window *, Lisp_Object, ptrdiff_t, ptrdiff_t,
                              ptrdiff_t *, enum face_id, bool);
-int merge_faces (struct frame *, Lisp_Object, int, int);
+int merge_faces (struct window *, Lisp_Object, int, int);
 int compute_char_face (struct frame *, int, Lisp_Object);
 void free_all_realized_faces (Lisp_Object);
 extern char unspecified_fg[], unspecified_bg[];
@@ -3457,15 +3468,6 @@ void gamma_correct (struct frame *, COLORREF *);
 void x_implicitly_set_name (struct frame *, Lisp_Object, Lisp_Object);
 void x_change_tool_bar_height (struct frame *f, int);
 
-/* The frame used to display a tooltip.
-
-   Note: In a GTK build with non-zero x_gtk_use_system_tooltips, this
-   variable holds the frame that shows the tooltip, not the frame of
-   the tooltip itself, so checking whether a frame is a tooltip frame
-   cannot just compare the frame to what this variable holds.  */
-extern Lisp_Object tip_frame;
-
-extern Window tip_window;
 extern frame_parm_handler x_frame_parm_handlers[];
 
 extern void start_hourglass (void);

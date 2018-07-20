@@ -1,6 +1,6 @@
 /* Fully extensible Emacs, running on Unix, intended for GNU.
 
-Copyright (C) 1985-1987, 1993-1995, 1997-1999, 2001-2017 Free Software
+Copyright (C) 1985-1987, 1993-1995, 1997-1999, 2001-2018 Free Software
 Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -83,6 +83,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "charset.h"
 #include "composite.h"
 #include "dispextern.h"
+#include "ptr-bounds.h"
 #include "regex.h"
 #include "sheap.h"
 #include "syntax.h"
@@ -93,10 +94,14 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "getpagesize.h"
 #include "gnutls.h"
 
-#if (defined PROFILING \
-     && (defined __FreeBSD__ || defined GNU_LINUX || defined __MINGW32__))
+#ifdef PROFILING
 # include <sys/gmon.h>
 extern void moncontrol (int mode);
+# ifdef __MINGW32__
+extern unsigned char etext asm ("etext");
+# else
+extern char etext;
+# endif
 #endif
 
 #ifdef HAVE_SETLOCALE
@@ -707,10 +712,12 @@ main (int argc, char **argv)
   bool disable_aslr = dumping;
 # endif
 
-  if (disable_aslr && disable_address_randomization ())
+  if (disable_aslr && disable_address_randomization ()
+      && !getenv ("EMACS_HEAP_EXEC"))
     {
       /* Set this so the personality will be reverted before execs
-	 after this one.  */
+	 after this one, and to work around an re-exec loop on buggy
+	 kernels (Bug#32083).  */
       xputenv ("EMACS_HEAP_EXEC=true");
 
       /* Address randomization was enabled, but is now disabled.
@@ -1065,7 +1072,7 @@ main (int argc, char **argv)
 #endif /* HAVE_LIBSYSTEMD */
 
 #ifdef USE_GTK
-      fprintf (stderr, "\nWarning: due to a long standing Gtk+ bug\nhttp://bugzilla.gnome.org/show_bug.cgi?id=85715\n\
+      fprintf (stderr, "\nWarning: due to a long standing Gtk+ bug\nhttps://gitlab.gnome.org/GNOME/gtk/issues/221\n\
 Emacs might crash when run in daemon mode and the X11 connection is unexpectedly lost.\n\
 Using an Emacs configured with --with-x-toolkit=lucid does not have this problem.\n");
 #endif /* USE_GTK */
@@ -1261,6 +1268,10 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   init_atimer ();
   running_asynch_code = 0;
   init_random ();
+
+#if defined HAVE_JSON && !defined WINDOWSNT
+  init_json ();
+#endif
 
   no_loadup
     = argmatch (argv, argc, "-nl", "--no-loadup", 6, NULL, &skip_args);
@@ -1561,6 +1572,10 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       syms_of_fontset ();
 #endif /* HAVE_NTGUI */
 
+#if defined HAVE_NTGUI || defined CYGWIN
+      syms_of_w32cygwinx ();
+#endif
+
 #if defined WINDOWSNT || defined HAVE_NTGUI
       syms_of_w32select ();
 #endif
@@ -1607,6 +1622,10 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 
       syms_of_threads ();
       syms_of_profiler ();
+
+#ifdef HAVE_JSON
+      syms_of_json ();
+#endif
 
       keys_of_casefiddle ();
       keys_of_cmds ();
@@ -1687,22 +1706,14 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
      GNU/Linux and MinGW.  It might work on some other systems too.
      Give it a try and tell us if it works on your system.  To compile
      for profiling, use the configure option --enable-profiling.  */
-#if defined (__FreeBSD__) || defined (GNU_LINUX) || defined (__MINGW32__)
 #ifdef PROFILING
   if (initialized)
     {
-#ifdef __MINGW32__
-      extern unsigned char etext asm ("etext");
-#else
-      extern char etext;
-#endif
-
       atexit (_mcleanup);
       monstartup ((uintptr_t) __executable_start, (uintptr_t) &etext);
     }
   else
     moncontrol (0);
-#endif
 #endif
 
   initialized = 1;
@@ -2011,7 +2022,10 @@ all of which are called before Emacs is actually killed.  */
   /* Fsignal calls emacs_abort () if it sees that waiting_for_input is
      set.  */
   waiting_for_input = 0;
-  run_hook (Qkill_emacs_hook);
+  if (noninteractive)
+    safe_run_hooks (Qkill_emacs_hook);
+  else
+    run_hook (Qkill_emacs_hook);
 
 #ifdef HAVE_X_WINDOWS
   /* Transfer any clipboards we own to the clipboard manager.  */

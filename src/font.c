@@ -1,6 +1,6 @@
 /* font.c -- "Font" primitives.
 
-Copyright (C) 2006-2017 Free Software Foundation, Inc.
+Copyright (C) 2006-2018 Free Software Foundation, Inc.
 Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
   National Institute of Advanced Industrial Science and Technology (AIST)
   Registration Number H13PRO009
@@ -1897,11 +1897,11 @@ otf_open (Lisp_Object file)
   OTF *otf;
 
   if (! NILP (val))
-    otf = XSAVE_POINTER (XCDR (val), 0);
+    otf = xmint_pointer (XCDR (val));
   else
     {
       otf = STRINGP (file) ? OTF_open (SSDATA (file)) : NULL;
-      val = make_save_ptr (otf);
+      val = make_mint_ptr (otf);
       otf_list = Fcons (Fcons (file, val), otf_list);
     }
   return otf;
@@ -2906,6 +2906,9 @@ font_open_entity (struct frame *f, Lisp_Object entity, int pixel_size)
       font = XFONT_OBJECT (font_object);
       if (font->average_width > 0 && font->height > 0)
 	break;
+      /* Avoid an infinite loop.  */
+      if (psize > pixel_size + 15)
+	return Qnil;
     }
   ASET (font_object, FONT_SIZE_INDEX, make_number (pixel_size));
   FONT_ADD_LOG ("open", entity, font_object);
@@ -3629,10 +3632,10 @@ font_put_frame_data (struct frame *f, Lisp_Object driver, void *data)
   else
     {
       if (NILP (val))
-	fset_font_data (f, Fcons (Fcons (driver, make_save_ptr (data)),
+	fset_font_data (f, Fcons (Fcons (driver, make_mint_ptr (data)),
 				  f->font_data));
       else
-	XSETCDR (val, make_save_ptr (data));
+	XSETCDR (val, make_mint_ptr (data));
     }
 }
 
@@ -3641,7 +3644,7 @@ font_get_frame_data (struct frame *f, Lisp_Object driver)
 {
   Lisp_Object val = assq_no_quit (driver, f->font_data);
 
-  return NILP (val) ? NULL : XSAVE_POINTER (XCDR (val), 0);
+  return NILP (val) ? NULL : xmint_pointer (XCDR (val));
 }
 
 #endif /* HAVE_XFT || HAVE_FREETYPE */
@@ -3807,7 +3810,7 @@ font_range (ptrdiff_t pos, ptrdiff_t pos_byte, ptrdiff_t *limit,
 	  face_id =
 	    NILP (Vface_remapping_alist)
 	    ? DEFAULT_FACE_ID
-	    : lookup_basic_face (f, DEFAULT_FACE_ID);
+	    : lookup_basic_face (w, f, DEFAULT_FACE_ID);
 
 	  face_id = face_at_string_position (w, string, pos, 0, &ignore,
 					     face_id, false);
@@ -4351,10 +4354,9 @@ clear_font_cache (struct frame *f)
 	Lisp_Object val, tmp, cache = driver_list->driver->get_cache (f);
 
 	val = XCDR (cache);
-	while (! NILP (val)
-	       && ! EQ (XCAR (XCAR (val)), driver_list->driver->type))
+	while (eassert (CONSP (val)),
+	       ! EQ (XCAR (XCAR (val)), driver_list->driver->type))
 	  val = XCDR (val);
-	eassert (! NILP (val));
 	tmp = XCDR (XCAR (val));
 	if (XINT (XCAR (tmp)) == 0)
 	  {
@@ -4556,7 +4558,7 @@ DEFUN ("internal-char-font", Finternal_char_font, Sinternal_char_font, 1, 2, 0,
       CHECK_CHARACTER (ch);
       c = XINT (ch);
       f = XFRAME (selected_frame);
-      face_id = lookup_basic_face (f, DEFAULT_FACE_ID);
+      face_id = lookup_basic_face (NULL, f, DEFAULT_FACE_ID);
       pos = -1;
     }
   else
@@ -5055,10 +5057,10 @@ DEFUN ("font-info", Ffont_info, Sfont_info, 1, 2, 0,
        doc: /* Return information about a font named NAME on frame FRAME.
 If FRAME is omitted or nil, use the selected frame.
 
-The returned value is a vector:
+The returned value is a vector of 14 elements:
   [ OPENED-NAME FULL-NAME SIZE HEIGHT BASELINE-OFFSET RELATIVE-COMPOSE
     DEFAULT-ASCENT MAX-WIDTH ASCENT DESCENT SPACE-WIDTH AVERAGE-WIDTH
-    CAPABILITY ]
+    FILENAME CAPABILITY ]
 where
   OPENED-NAME is the name used for opening the font,
   FULL-NAME is the full name of the font,
@@ -5068,12 +5070,12 @@ where
   RELATIVE-COMPOSE and DEFAULT-ASCENT are the numbers controlling
     how to compose characters,
   MAX-WIDTH is the maximum advance width of the font,
-  ASCENT, DESCENT, SPACE-WIDTH, AVERAGE-WIDTH are metrics of the font
-    in pixels,
+  ASCENT, DESCENT, SPACE-WIDTH, and AVERAGE-WIDTH are metrics of
+    the font in pixels,
   FILENAME is the font file name, a string (or nil if the font backend
     doesn't provide a file name).
   CAPABILITY is a list whose first element is a symbol representing the
-    font format, one of x, opentype, truetype, type1, pcf, or bdf.
+    font format, one of `x', `opentype', `truetype', `type1', `pcf', or `bdf'.
     The remaining elements describe the details of the font capabilities,
     as follows:
 
@@ -5472,6 +5474,13 @@ this variable non-nil.
 Disabling compaction of font caches might enlarge the Emacs memory
 footprint in sessions that use lots of different fonts.  */);
   inhibit_compacting_font_caches = 0;
+
+  DEFVAR_BOOL ("xft-ignore-color-fonts",
+	       Vxft_ignore_color_fonts,
+	       doc: /*
+Non-nil means don't query fontconfig for color fonts, since they often
+cause Xft crashes.  Only has an effect in Xft builds.  */);
+  Vxft_ignore_color_fonts = 1;
 
 #ifdef HAVE_WINDOW_SYSTEM
 #ifdef HAVE_FREETYPE

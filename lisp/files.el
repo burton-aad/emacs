@@ -1,6 +1,6 @@
 ;;; files.el --- file input and output commands for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-1987, 1992-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1985-1987, 1992-2018 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Package: emacs
@@ -148,12 +148,16 @@ This variable is relevant only if `backup-by-copying' and
 Called with an absolute file name as argument, it returns t to enable backup.")
 
 (defcustom buffer-offer-save nil
-  "Non-nil in a buffer means always offer to save buffer on exit.
+  "Non-nil in a buffer means always offer to save buffer on exiting Emacs.
 Do so even if the buffer is not visiting a file.
 Automatically local in all buffers.
 
 Set to the symbol `always' to offer to save buffer whenever
-`save-some-buffers' is called."
+`save-some-buffers' is called.
+
+Note that this option has no effect on `kill-buffer';
+if you want to control what happens when a buffer is killed,
+use `kill-buffer-query-functions'."
   :type '(choice (const :tag "Never" nil)
                  (const :tag "On Emacs exit" t)
                  (const :tag "Whenever save-some-buffers is called" always))
@@ -318,7 +322,7 @@ If nil, ask confirmation.  Any other value prevents any trimming."
 
 (defcustom kept-new-versions 2
   "Number of newest versions to keep when a new numbered backup is made.
-Includes the new backup.  Must be > 0"
+Includes the new backup.  Must be greater than 0."
   :type 'integer
   :group 'backup)
 (put 'kept-new-versions 'safe-local-variable 'integerp)
@@ -419,14 +423,10 @@ idle for `auto-save-visited-interval' seconds."
 
 (define-minor-mode auto-save-visited-mode
   "Toggle automatic saving to file-visiting buffers on or off.
-With a prefix argument ARG, enable regular saving of all buffers
-visiting a file if ARG is positive, and disable it otherwise.
+
 Unlike `auto-save-mode', this mode will auto-save buffer contents
 to the visited files directly and will also run all save-related
-hooks.  See Info node `Saving' for details of the save process.
-
-If called from Lisp, enable the mode if ARG is omitted or nil,
-and toggle it if ARG is `toggle'."
+hooks.  See Info node `Saving' for details of the save process."
   :group 'auto-save
   :global t
   (when auto-save--timer (cancel-timer auto-save--timer))
@@ -436,8 +436,9 @@ and toggle it if ARG is `toggle'."
            auto-save-visited-interval :repeat
            #'save-some-buffers :no-prompt
            (lambda ()
-             (not (and buffer-auto-save-file-name
-                       auto-save-visited-file-name)))))))
+             (and buffer-file-name
+                  (not (and buffer-auto-save-file-name
+                            auto-save-visited-file-name))))))))
 
 ;; The 'set' part is so we don't get a warning for using this variable
 ;; above, while still catching code that _sets_ the variable to get
@@ -473,7 +474,7 @@ location of point in the current buffer."
   :group 'find-file)
 
 ;;;It is not useful to make this a local variable.
-;;;(put 'find-file-not-found-hooks 'permanent-local t)
+;;;(put 'find-file-not-found-functions 'permanent-local t)
 (define-obsolete-variable-alias 'find-file-not-found-hooks
     'find-file-not-found-functions "22.1")
 (defvar find-file-not-found-functions nil
@@ -483,7 +484,8 @@ Variable `buffer-file-name' is already set up.
 The functions are called in the order given until one of them returns non-nil.")
 
 ;;;It is not useful to make this a local variable.
-;;;(put 'find-file-hooks 'permanent-local t)
+;;;(put 'find-file-hook 'permanent-local t)
+;; I found some external files still using the obsolete form in 2018.
 (define-obsolete-variable-alias 'find-file-hooks 'find-file-hook "22.1")
 (defcustom find-file-hook nil
   "List of functions to be called after a buffer is loaded from a file.
@@ -494,6 +496,7 @@ functions are called."
   :options '(auto-insert)
   :version "22.1")
 
+;; I found some external files still using the obsolete form in 2018.
 (define-obsolete-variable-alias 'write-file-hooks 'write-file-functions "22.1")
 (defvar write-file-functions nil
   "List of functions to be called before saving a buffer to a file.
@@ -513,11 +516,13 @@ node `(elisp)Saving Buffers'.)  To perform various checks or
 updates before the buffer is saved, use `before-save-hook'.")
 (put 'write-file-functions 'permanent-local t)
 
+;; I found some files still using the obsolete form in 2018.
 (defvar local-write-file-hooks nil)
 (make-variable-buffer-local 'local-write-file-hooks)
 (put 'local-write-file-hooks 'permanent-local t)
 (make-obsolete-variable 'local-write-file-hooks 'write-file-functions "22.1")
 
+;; I found some files still using the obsolete form in 2018.
 (define-obsolete-variable-alias 'write-contents-hooks
     'write-contents-functions "22.1")
 (defvar write-contents-functions nil
@@ -963,7 +968,8 @@ the function needs to examine, starting with FILE."
                     (null file)
                     (string-match locate-dominating-stop-dir-regexp file)))
       (setq try (if (stringp name)
-                    (file-exists-p (expand-file-name name file))
+                    (and (file-directory-p file)
+                         (file-exists-p (expand-file-name name file)))
                   (funcall name file)))
       (cond (try (setq root file))
             ((equal file (setq file (file-name-directory
@@ -1018,13 +1024,33 @@ customize the variable `user-emacs-directory-warning'."
 					errtype user-emacs-directory)))))
        bestname))))
 
+(defun exec-path ()
+  "Return list of directories to search programs to run in remote subprocesses.
+The remote host is identified by `default-directory'.  For remote
+hosts which do not support subprocesses, this returns `nil'.
+If `default-directory' is a local directory, this function returns
+the value of the variable `exec-path'."
+  (let ((handler (find-file-name-handler default-directory 'exec-path)))
+    (if handler
+	(funcall handler 'exec-path)
+      exec-path)))
 
-(defun executable-find (command)
+(defun executable-find (command &optional remote)
   "Search for COMMAND in `exec-path' and return the absolute file name.
-Return nil if COMMAND is not found anywhere in `exec-path'."
-  ;; Use 1 rather than file-executable-p to better match the behavior of
-  ;; call-process.
-  (locate-file command exec-path exec-suffixes 1))
+Return nil if COMMAND is not found anywhere in `exec-path'.  If
+REMOTE is non-nil, search on the remote host indicated by
+`default-directory' instead."
+  (if (and remote (file-remote-p default-directory))
+      (let ((res (locate-file
+	          command
+	          (mapcar
+	           (lambda (x) (concat (file-remote-p default-directory) x))
+	           (exec-path))
+	          exec-suffixes 'file-executable-p)))
+        (when (stringp res) (file-local-name res)))
+    ;; Use 1 rather than file-executable-p to better match the
+    ;; behavior of call-process.
+    (locate-file command exec-path exec-suffixes 1)))
 
 (defun load-library (library)
   "Load the Emacs Lisp library named LIBRARY.
@@ -1801,7 +1827,11 @@ killed."
 	  (setq buffer-file-truename nil)
 	  ;; Likewise for dired buffers.
 	  (setq dired-directory nil)
-	  (find-file filename wildcards))
+          ;; Don't use `find-file' because it may end up using another window
+          ;; in some corner cases, e.g. when the selected window is
+          ;; softly-dedicated.
+	  (let ((newbuf (find-file-noselect filename wildcards)))
+            (switch-to-buffer newbuf)))
       (when (eq obuf (current-buffer))
 	;; This executes if find-file gets an error
 	;; and does not really find anything.
@@ -2004,15 +2034,47 @@ think it does, because \"free\" is pretty hard to define in practice."
   :version "25.1"
   :type '(choice integer (const :tag "Never issue warning" nil)))
 
-(defun abort-if-file-too-large (size op-type filename)
+(declare-function x-popup-dialog "menu.c" (position contents &optional header))
+
+(defun files--ask-user-about-large-file (size op-type filename offer-raw)
+  (let ((prompt (format "File %s is large (%s), really %s?"
+		        (file-name-nondirectory filename)
+		        (file-size-human-readable size) op-type)))
+    (if (not offer-raw)
+        (if (y-or-n-p prompt) nil 'abort)
+      (let* ((use-dialog (and (display-popup-menus-p)
+                              last-input-event
+	                      (listp last-nonmenu-event)
+	                      use-dialog-box))
+             (choice
+              (if use-dialog
+                  (x-popup-dialog t `(,prompt
+                                      ("Yes" . ?y)
+                                      ("No" . ?n)
+                                      ("Open literally" . ?l)))
+                (read-char-choice
+                 (concat prompt " (y)es or (n)o or (l)iterally ")
+                 '(?y ?Y ?n ?N ?l ?L)))))
+        (cond ((memq choice '(?y ?Y)) nil)
+              ((memq choice '(?l ?L)) 'raw)
+              (t 'abort))))))
+
+(defun abort-if-file-too-large (size op-type filename &optional offer-raw)
   "If file SIZE larger than `large-file-warning-threshold', allow user to abort.
-OP-TYPE specifies the file operation being performed (for message to user)."
-  (when (and large-file-warning-threshold size
-	     (> size large-file-warning-threshold)
-	     (not (y-or-n-p (format "File %s is large (%s), really %s? "
-				    (file-name-nondirectory filename)
-				    (file-size-human-readable size) op-type))))
-    (user-error "Aborted")))
+OP-TYPE specifies the file operation being performed (for message
+to user).  If OFFER-RAW is true, give user the additional option
+to open the file literally. If the user chooses this option,
+`abort-if-file-too-large' returns the symbol `raw'. Otherwise, it
+returns nil or exits non-locally."
+  (let ((choice (and large-file-warning-threshold size
+	             (> size large-file-warning-threshold)
+                     ;; No point in warning if we can't read it.
+                     (file-readable-p filename)
+                     (files--ask-user-about-large-file
+                      size op-type filename offer-raw))))
+    (when (eq choice 'abort)
+      (user-error "Aborted"))
+    choice))
 
 (defun warn-maybe-out-of-memory (size)
   "Warn if an attempt to open file of SIZE bytes may run out of memory."
@@ -2092,7 +2154,10 @@ the various files."
 		  (setq buf other))))
 	;; Check to see if the file looks uncommonly large.
 	(when (not (or buf nowarn))
-	  (abort-if-file-too-large (nth 7 attributes) "open" filename)
+          (when (eq (abort-if-file-too-large
+                     (nth 7 attributes) "open" filename t)
+                    'raw)
+            (setf rawfile t))
 	  (warn-maybe-out-of-memory (nth 7 attributes)))
 	(if buf
 	    ;; We are using an existing buffer.
@@ -2228,8 +2293,7 @@ Do you want to revisit the file normally now? ")
       (kill-local-variable 'cursor-type)
       (let ((inhibit-read-only t))
 	(erase-buffer))
-      (and (default-value 'enable-multibyte-characters)
-	   (not rawfile)
+      (and (not rawfile)
 	   (set-buffer-multibyte t))
       (if rawfile
 	  (condition-case ()
@@ -2298,7 +2362,8 @@ This function ensures that none of these modifications will take place."
          ;; FIXME: Yuck!!  We should turn insert-file-contents-literally
          ;; into a file operation instead!
          (append '(jka-compr-handler image-file-handler epa-file-handler)
-                 inhibit-file-name-handlers))
+	         (and (eq inhibit-file-name-operation 'insert-file-contents)
+		      inhibit-file-name-handlers)))
         (inhibit-file-name-operation 'insert-file-contents))
     (insert-file-contents filename visit beg end replace)))
 
@@ -2341,10 +2406,15 @@ and local variable specifications in the file are ignored.
 Automatic uncompression and adding a newline at the end of the
 file due to `require-final-newline' is also disabled.
 
-You cannot absolutely rely on this function to result in
-visiting the file literally.  If Emacs already has a buffer
-which is visiting the file, you get the existing buffer,
-regardless of whether it was created literally or not.
+If Emacs already has a buffer which is visiting the file,
+this command asks you whether to visit it literally instead.
+
+In non-interactive use, the value is the buffer where the file is
+visited literally.  If the file was visited in a buffer before
+this command was invoked, it will reuse the existing buffer,
+regardless of whether it was created literally or not; however,
+the contents of that buffer will be the literal text of the file
+without any conversions.
 
 In a Lisp program, if you want to be sure of accessing a file's
 contents literally, you should create a temporary buffer and then read
@@ -2538,7 +2608,7 @@ since only a single case-insensitive search through the alist is made."
 	     ("\\.make\\'" . makefile-bsdmake-mode)
 	     ("GNUmakefile\\'" . makefile-gmake-mode)
 	     ("[Mm]akefile\\'" . makefile-bsdmake-mode))
-	 '(("\\.mk\\'" . makefile-gmake-mode)	; Might be any make, give Gnu the host advantage
+	 '(("\\.mk\\'" . makefile-gmake-mode)	; Might be any make, give GNU the host advantage
 	   ("\\.make\\'" . makefile-gmake-mode)
 	   ("[Mm]akefile\\'" . makefile-gmake-mode)))
      ("\\.am\\'" . makefile-automake-mode)
@@ -3311,7 +3381,7 @@ n  -- to ignore the local variables list.")
 
       ;; Display the buffer and read a choice.
       (save-window-excursion
-	(pop-to-buffer buf)
+	(pop-to-buffer buf '(display-buffer--maybe-at-bottom))
 	(let* ((exit-chars '(?y ?n ?\s ?\C-g ?\C-v))
 	       (prompt (format "Please type %s%s: "
 			       (if offer-save "y, n, or !" "y or n")
@@ -3619,7 +3689,8 @@ local variables, but directory-local variables may still be applied."
 				 (push (cons (if (eq var 'eval)
 						 'eval
 					       (indirect-variable var))
-					     val) result))))))
+					     val)
+                                       result))))))
 		    (forward-line 1))))))))
       ;; Now we've read all the local variables.
       ;; If HANDLE-MODE is t, return whether the mode was specified.
@@ -4004,13 +4075,15 @@ This function returns either:
       ;; No cache entry.
       locals-dir)))
 
+(declare-function map-merge-with "map" (type function &rest maps))
+(declare-function map-merge "map" (type &rest maps))
+
 (defun dir-locals-read-from-dir (dir)
   "Load all variables files in DIR and register a new class and instance.
 DIR is the absolute name of a directory which must contain at
 least one dir-local file (which is a file holding variables to
 apply).
 Return the new class name, which is a symbol named DIR."
-  (require 'map)
   (let* ((class-name (intern dir))
          (files (dir-locals--all-files dir))
          (read-circle nil)
@@ -4025,12 +4098,19 @@ Return the new class name, which is a symbol named DIR."
 	    (setq latest file-time)))
         (with-temp-buffer
           (insert-file-contents file)
-          (condition-case-unless-debug nil
-              (setq variables
+          (let ((newvars
+                 (condition-case-unless-debug nil
+                     (read (current-buffer))
+                   (end-of-file nil))))
+            (setq variables
+                  ;; Try and avoid loading `map' since that also loads cl-lib
+                  ;; which then might hamper bytecomp warnings (bug#30635).
+                  (if (not (and newvars variables))
+                      (or newvars variables)
+                    (require 'map)
                     (map-merge-with 'list (lambda (a b) (map-merge 'list a b))
                                     variables
-                                    (read (current-buffer))))
-            (end-of-file nil))))
+                                    newvars))))))
       (setq success latest))
     (dir-locals-set-class-variables class-name variables)
     (dir-locals-set-directory-class dir class-name success)
@@ -5195,19 +5275,27 @@ Before and after saving the buffer, this function runs
 This allows you to stop `save-some-buffers' from asking
 about certain files that you'd usually rather not save."
   :group 'auto-save
-  :type 'function
+  ;; FIXME nil should not be a valid option, let alone the default,
+  ;; eg so that add-function can be used.
+  :type '(choice (const :tag "Default" nil) function)
   :version "26.1")
 
 (defun save-some-buffers (&optional arg pred)
   "Save some modified file-visiting buffers.  Asks user about each one.
-You can answer `y' to save, `n' not to save, `C-r' to look at the
-buffer in question with `view-buffer' before deciding or `d' to
-view the differences using `diff-buffer-with-file'.
+You can answer `y' or SPC to save, `n' or DEL not to save, `C-r'
+to look at the buffer in question with `view-buffer' before
+deciding, `d' to view the differences using
+`diff-buffer-with-file', `!' to save the buffer and all remaining
+buffers without any further querying, `.' to save only the
+current buffer and skip the remaining ones and `q' or RET to exit
+the function without saving any more buffers.  `C-h' displays a
+help message describing these options.
 
 This command first saves any buffers where `buffer-save-without-query' is
 non-nil, without asking.
 
-Optional argument (the prefix) non-nil means save all with no questions.
+Optional argument ARG (interactively, prefix argument) non-nil means save
+all with no questions.
 Optional second argument PRED determines which buffers are considered:
 If PRED is nil, all the file-visiting buffers are considered.
 If PRED is t, then certain non-file buffers will also be considered.
@@ -6459,9 +6547,10 @@ The return value is a string describing the amount of free
 space (normally, the number of free 1KB blocks).
 
 If DIR's free space cannot be obtained, this function returns nil."
-  (let ((avail (nth 2 (file-system-info dir))))
-    (if avail
-	(format "%.0f" (/ avail 1024)))))
+  (save-match-data
+    (let ((avail (nth 2 (file-system-info dir))))
+      (if avail
+	  (format "%.0f" (/ avail 1024))))))
 
 ;; The following expression replaces `dired-move-to-filename-regexp'.
 (defvar directory-listing-before-filename-regexp
@@ -6911,8 +7000,9 @@ if any returns nil.  If `confirm-kill-emacs' is non-nil, calls it."
                   (setq active t))
              (setq processes (cdr processes)))
            (or (not active)
-               (with-current-buffer-window
-                (get-buffer-create "*Process List*") nil
+               (with-displayed-buffer-window
+                (get-buffer-create "*Process List*")
+                '(display-buffer--maybe-at-bottom)
                 #'(lambda (window _value)
                     (with-selected-window window
                       (unwind-protect
@@ -6952,20 +7042,27 @@ only these files will be asked to be saved."
 ;; We depend on being the last handler on the list,
 ;; so that anything else which does need handling
 ;; has been handled already.
-;; So it is safe for us to inhibit *all* magic file name handlers.
+;; So it is safe for us to inhibit *all* magic file name handlers for
+;; operations, which return a file name.  See Bug#29579.
 
 (defun file-name-non-special (operation &rest arguments)
-  (let ((file-name-handler-alist nil)
-	(default-directory
-          ;; Some operations respect file name handlers in
-          ;; `default-directory'.  Because core function like
-          ;; `call-process' don't care about file name handlers in
-          ;; `default-directory', we here have to resolve the
-          ;; directory into a local one.  For `process-file',
-          ;; `start-file-process', and `shell-command', this fixes
-          ;; Bug#25949.
-	  (if (memq operation '(insert-directory process-file start-file-process
-                                                 shell-command))
+  (let (;; In general, we don't want any file name handler.  For some
+        ;; few cases, operations with two file name arguments which
+        ;; might be bound to different file name handlers, we still
+        ;; need this.
+        (saved-file-name-handler-alist file-name-handler-alist)
+        file-name-handler-alist
+        ;; Some operations respect file name handlers in
+        ;; `default-directory'.  Because core function like
+        ;; `call-process' don't care about file name handlers in
+        ;; `default-directory', we here have to resolve the directory
+        ;; into a local one.  For `process-file',
+        ;; `start-file-process', and `shell-command', this fixes
+        ;; Bug#25949.
+        (default-directory
+	  (if (memq operation
+                    '(insert-directory process-file start-file-process
+                                       shell-command temporary-file-directory))
 	      (directory-file-name
 	       (expand-file-name
 		(unhandled-file-name-directory default-directory)))
@@ -6973,35 +7070,49 @@ only these files will be asked to be saved."
 	;; Get a list of the indices of the args which are file names.
 	(file-arg-indices
 	 (cdr (or (assq operation
-			;; The first six are special because they
-			;; return a file name.  We want to include the /:
-			;; in the return value.
-			;; So just avoid stripping it in the first place.
-			'((expand-file-name . nil)
-			  (file-name-directory . nil)
-			  (file-name-as-directory . nil)
-			  (directory-file-name . nil)
-			  (file-name-sans-versions . nil)
-			  (find-backup-file-name . nil)
-			  ;; `identity' means just return the first arg
-			  ;; not stripped of its quoting.
+			'(;; The first seven are special because they
+			  ;; return a file name.  We want to include
+			  ;; the /: in the return value.  So just
+			  ;; avoid stripping it in the first place.
+                          (directory-file-name)
+                          (expand-file-name)
+                          (file-name-as-directory)
+                          (file-name-directory)
+                          (file-name-sans-versions)
+                          (file-remote-p)
+                          (find-backup-file-name)
+	                  ;; `identity' means just return the first
+			  ;; arg not stripped of its quoting.
 			  (substitute-in-file-name identity)
 			  ;; `add' means add "/:" to the result.
 			  (file-truename add 0)
+                          ;;`insert-file-contents' needs special handling.
 			  (insert-file-contents insert-file-contents 0)
 			  ;; `unquote-then-quote' means set buffer-file-name
 			  ;; temporarily to unquoted filename.
 			  (verify-visited-file-modtime unquote-then-quote)
+                          ;; Unquote `buffer-file-name' temporarily.
+                          (make-auto-save-file-name buffer-file-name)
+                          (set-visited-file-modtime buffer-file-name)
+                          ;; Use a temporary local copy.
+			  (copy-file local-copy)
+			  (rename-file local-copy)
+                          (copy-directory local-copy)
 			  ;; List the arguments which are filenames.
-			  (file-name-completion 1)
-			  (file-name-all-completions 1)
+			  (file-name-completion 0 1)
+			  (file-name-all-completions 0 1)
+                          (file-equal-p 0 1)
+                          (file-newer-than-file-p 0 1)
 			  (write-region 2 5)
-			  (rename-file 0 1)
-			  (copy-file 0 1)
+			  (file-in-directory-p 0 1)
 			  (make-symbolic-link 0 1)
-			  (add-name-to-file 0 1)))
-		  ;; For all other operations, treat the first argument only
-		  ;; as the file name.
+			  (add-name-to-file 0 1)
+                          ;; These file-notify-* operations take a
+                          ;; descriptor.
+                          (file-notify-rm-watch)
+                          (file-notify-valid-p)))
+		  ;; For all other operations, treat the first
+		  ;; argument only as the file name.
 		  '(nil 0))))
 	method
 	;; Copy ARGUMENTS so we can replace elements in it.
@@ -7012,22 +7123,21 @@ only these files will be asked to be saved."
     (save-match-data
       (while (consp file-arg-indices)
 	(let ((pair (nthcdr (car file-arg-indices) arguments)))
-	  (and (car pair)
-	       (string-match "\\`/:" (car pair))
-	       (setcar pair
-		       (if (= (length (car pair)) 2)
-			   "/"
-			 (substring (car pair) 2)))))
+	  (when (car pair)
+	    (setcar pair (file-name-unquote (car pair) t))))
 	(setq file-arg-indices (cdr file-arg-indices))))
     (pcase method
       (`identity (car arguments))
-      (`add (file-name-quote (apply operation arguments)))
+      (`add (file-name-quote (apply operation arguments) t))
+      (`buffer-file-name
+       (let ((buffer-file-name (file-name-unquote buffer-file-name t)))
+         (apply operation arguments)))
       (`insert-file-contents
        (let ((visit (nth 1 arguments)))
          (unwind-protect
              (apply operation arguments)
            (when (and visit buffer-file-name)
-             (setq buffer-file-name (concat "/:" buffer-file-name))))))
+             (setq buffer-file-name (file-name-quote buffer-file-name t))))))
       (`unquote-then-quote
        ;; We can't use `cl-letf' with `(buffer-local-value)' here
        ;; because it wouldn't work during bootstrapping.
@@ -7036,32 +7146,73 @@ only these files will be asked to be saved."
          ;; `verify-visited-file-modtime' action, which takes a buffer
          ;; as only optional argument.
          (with-current-buffer (or (car arguments) buffer)
-           (let ((buffer-file-name (substring buffer-file-name 2)))
+           (let ((buffer-file-name (file-name-unquote buffer-file-name t)))
              ;; Make sure to hide the temporary buffer change from the
              ;; underlying operation.
              (with-current-buffer buffer
                (apply operation arguments))))))
+      (`local-copy
+       (let* ((file-name-handler-alist saved-file-name-handler-alist)
+              (source (car arguments))
+              (target (car (cdr arguments)))
+              (prefix (expand-file-name
+                       "file-name-non-special" temporary-file-directory))
+              tmpfile)
+         (cond
+          ;; If source is remote, we must create a local copy.
+          ((file-remote-p source)
+           (setq tmpfile (make-temp-name prefix))
+           (apply operation source tmpfile (cddr arguments))
+           (setq source tmpfile))
+          ;; If source is quoted, and the unquoted source looks
+          ;; remote, we must create a local copy.
+          ((file-name-quoted-p source t)
+           (setq source (file-name-unquote source t))
+           (when (file-remote-p source)
+             (setq tmpfile (make-temp-name prefix))
+             (let (file-name-handler-alist)
+               (apply operation source tmpfile (cddr arguments)))
+             (setq source tmpfile))))
+         ;; If target is quoted, and the unquoted target looks remote,
+         ;; we must disable the file name handler.
+         (when (file-name-quoted-p target t)
+           (setq target (file-name-unquote target t))
+           (when (file-remote-p target)
+             (setq file-name-handler-alist nil)))
+         ;; Do it.
+         (setcar arguments source)
+         (setcar (cdr arguments) target)
+         (apply operation arguments)
+         ;; Cleanup.
+         (when (and tmpfile (file-exists-p tmpfile))
+           (if (file-directory-p tmpfile)
+               (delete-directory tmpfile 'recursive) (delete-file tmpfile)))))
       (_
        (apply operation arguments)))))
 
-(defsubst file-name-quoted-p (name)
+(defsubst file-name-quoted-p (name &optional top)
   "Whether NAME is quoted with prefix \"/:\".
-If NAME is a remote file name, check the local part of NAME."
-  (string-prefix-p "/:" (file-local-name name)))
+If NAME is a remote file name and TOP is nil, check the local part of NAME."
+  (let ((file-name-handler-alist (unless top file-name-handler-alist)))
+    (string-prefix-p "/:" (file-local-name name))))
 
-(defsubst file-name-quote (name)
+(defsubst file-name-quote (name &optional top)
   "Add the quotation prefix \"/:\" to file NAME.
-If NAME is a remote file name, the local part of NAME is quoted.
-If NAME is already a quoted file name, NAME is returned unchanged."
-  (if (file-name-quoted-p name)
-      name
-    (concat (file-remote-p name) "/:" (file-local-name name))))
+If NAME is a remote file name and TOP is nil, the local part of
+NAME is quoted.  If NAME is already a quoted file name, NAME is
+returned unchanged."
+  (let ((file-name-handler-alist (unless top file-name-handler-alist)))
+    (if (file-name-quoted-p name top)
+        name
+      (concat (file-remote-p name) "/:" (file-local-name name)))))
 
-(defsubst file-name-unquote (name)
+(defsubst file-name-unquote (name &optional top)
   "Remove quotation prefix \"/:\" from file NAME, if any.
-If NAME is a remote file name, the local part of NAME is unquoted."
-  (let ((localname (file-local-name name)))
-    (when (file-name-quoted-p localname)
+If NAME is a remote file name and TOP is nil, the local part of
+NAME is unquoted."
+  (let* ((file-name-handler-alist (unless top file-name-handler-alist))
+         (localname (file-local-name name)))
+    (when (file-name-quoted-p localname top)
       (setq
        localname (if (= (length localname) 2) "/" (substring localname 2))))
     (concat (file-remote-p name) localname)))

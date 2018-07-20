@@ -1,6 +1,6 @@
 ;;; ido.el --- interactively do things with buffers and files -*- lexical-binding: t -*-
 
-;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2018 Free Software Foundation, Inc.
 
 ;; Author: Kim F. Storm <storm@cua.dk>
 ;; Based on: iswitchb by Stephen Eglen <stephen@cns.ed.ac.uk>
@@ -1135,6 +1135,9 @@ selected.")
 (defvar ido-current-directory nil
   "Current directory for `ido-find-file'.")
 
+(defvar ido-predicate nil
+  "Current completion predicate.")
+
 (defvar ido-auto-merge-timer nil
   "Delay timer for auto merge.")
 
@@ -1238,6 +1241,9 @@ Only used if `ido-use-virtual-buffers' is non-nil.")
 
 ;; Dynamically bound in ido-read-internal.
 (defvar ido-completing-read)
+
+;; If dynamically set when ido-exit is 'fallback, overrides fallback command.
+(defvar ido-fallback nil)
 
 ;;; FUNCTIONS
 
@@ -1576,10 +1582,7 @@ Removes badly formatted data and ignored directories."
   (add-hook 'choose-completion-string-functions 'ido-choose-completion-string))
 
 (define-minor-mode ido-everywhere
-  "Toggle use of Ido for all buffer/file reading.
-With a prefix argument ARG, enable this feature if ARG is
-positive, and disable it otherwise.  If called from Lisp,
-enable the mode if ARG is omitted or nil."
+  "Toggle use of Ido for all buffer/file reading."
   :global t
   :group 'ido
   (remove-function read-file-name-function #'ido-read-file-name)
@@ -1790,11 +1793,8 @@ is enabled then some keybindings are changed in the keymap."
 
 (defun ido-record-command (command arg)
   "Add (COMMAND ARG) to `command-history' if `ido-record-commands' is non-nil."
-  (if ido-record-commands		; FIXME: use `when' instead of `if'?
-      (let ((cmd (list command arg)))
-	(if (or (not command-history)	; FIXME: ditto
-		(not (equal cmd (car command-history))))
-	    (setq command-history (cons cmd command-history))))))
+  (when ido-record-commands
+    (add-to-history 'command-history (list command arg))))
 
 (defun ido-make-prompt (item prompt)
   ;; Make the prompt for ido-read-internal
@@ -2220,6 +2220,7 @@ If cursor is not at the end of the user input, move to end of input."
 	(run-hook-with-args 'ido-before-fallback-functions
 			    (or fallback 'switch-to-buffer))
 	(call-interactively (or fallback 'switch-to-buffer)))
+    (setq ido-fallback nil)
     (let* ((ido-context-switch-command switch-cmd)
 	   (ido-current-directory nil)
 	   (ido-directory-nonreadable nil)
@@ -2245,7 +2246,7 @@ If cursor is not at the end of the user input, move to end of input."
 
        ((eq ido-exit 'fallback)
 	(let ((read-buffer-function nil))
-	  (setq this-command (or fallback 'switch-to-buffer))
+	  (setq this-command (or ido-fallback fallback 'switch-to-buffer))
 	  (run-hook-with-args 'ido-before-fallback-functions this-command)
 	  (call-interactively this-command)))
 
@@ -2341,6 +2342,7 @@ If cursor is not at the end of the user input, move to end of input."
   ;; Internal function for ido-find-file and friends
   (unless item
     (setq item 'file))
+  (setq ido-fallback nil)
   (let ((ido-current-directory (ido-expand-directory default))
 	(ido-context-switch-command switch-cmd)
 	ido-directory-nonreadable ido-directory-too-big
@@ -2412,7 +2414,7 @@ If cursor is not at the end of the user input, move to end of input."
 	;; we don't want to change directory of current buffer.
 	(let ((default-directory ido-current-directory)
 	      (read-file-name-function nil))
-	  (setq this-command (or fallback 'find-file))
+	  (setq this-command (or ido-fallback fallback 'find-file))
 	  (run-hook-with-args 'ido-before-fallback-functions this-command)
 	  (call-interactively this-command)))
 
@@ -2821,13 +2823,15 @@ If no buffer or file exactly matching the prompt exists, maybe create a new one.
   (setq ido-exit 'takeprompt)
   (exit-minibuffer))
 
-(defun ido-fallback-command ()
-  "Fallback to non-Ido version of current command."
+(defun ido-fallback-command (&optional fallback-command)
+  "Fallback to non-Ido version of current command.
+The optional FALLBACK-COMMAND argument indicates which command to run."
   (interactive)
   (let ((i (length ido-text)))
     (while (> i 0)
       (push (aref ido-text (setq i (1- i))) unread-command-events)))
   (setq ido-exit 'fallback)
+  (setq ido-fallback fallback-command)
   (exit-minibuffer))
 
 (defun ido-enter-find-file ()
@@ -3480,6 +3484,11 @@ it is put to the start of the list."
     (if ido-temp-list
 	(nconc ido-temp-list ido-current-buffers)
       (setq ido-temp-list ido-current-buffers))
+    (if ido-predicate
+        (setq ido-temp-list (seq-filter
+                             (lambda (name)
+                               (funcall ido-predicate (cons name (get-buffer name))))
+                             ido-temp-list)))
     (if default
 	(setq ido-temp-list
 	      (cons default (delete default ido-temp-list))))
@@ -4845,10 +4854,13 @@ Modified from `icomplete-completions'."
 Return the name of a buffer selected.
 PROMPT is the prompt to give to the user.  DEFAULT if given is the default
 buffer to be selected, which will go to the front of the list.
-If REQUIRE-MATCH is non-nil, an existing buffer must be selected."
+If REQUIRE-MATCH is non-nil, an existing buffer must be selected.
+Optional arg PREDICATE if non-nil is a function limiting the
+buffers that can be considered."
   (let* ((ido-current-directory nil)
 	 (ido-directory-nonreadable nil)
 	 (ido-directory-too-big nil)
+         (ido-predicate predicate)
 	 (ido-context-switch-command 'ignore)
 	 (buf (ido-read-internal 'buffer prompt 'ido-buffer-history default require-match)))
     (if (eq ido-exit 'fallback)

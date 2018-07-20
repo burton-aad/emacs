@@ -1,5 +1,5 @@
 /* Interface code for dealing with text properties.
-   Copyright (C) 1993-1995, 1997, 1999-2017 Free Software Foundation,
+   Copyright (C) 1993-1995, 1997, 1999-2018 Free Software Foundation,
    Inc.
 
 This file is part of GNU Emacs.
@@ -826,7 +826,7 @@ last valid position in OBJECT.  */)
 	      break;
 	  }
 
-      unbind_to (count, Qnil);
+      position = unbind_to (count, position);
     }
 
   return position;
@@ -920,7 +920,7 @@ first valid position in OBJECT.  */)
 	    }
 	}
 
-      unbind_to (count, Qnil);
+      position = unbind_to (count, position);
     }
 
   return position;
@@ -2269,7 +2269,7 @@ verify_interval_modification (struct buffer *buf,
       if (!inhibit_modification_hooks)
 	{
 	  hooks = Fnreverse (hooks);
-	  while (! EQ (hooks, Qnil))
+	  while (! NILP (hooks))
 	    {
 	      call_mod_hooks (Fcar (hooks), make_number (start),
 			      make_number (end));

@@ -1,6 +1,6 @@
 ;;; mh-comp.el --- MH-E functions for composing and sending messages
 
-;; Copyright (C) 1993, 1995, 1997, 2000-2017 Free Software Foundation,
+;; Copyright (C) 1993, 1995, 1997, 2000-2018 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Bill Wohler <wohler@newt.com>
@@ -305,24 +305,26 @@ message and scan line."
         (file-name buffer-file-name)
         (config mh-previous-window-config)
         (coding-system-for-write
-         (if (and (local-variable-p 'buffer-file-coding-system
-                                    (current-buffer)) ;XEmacs needs two args
-                  ;; We're not sure why, but buffer-file-coding-system
-                  ;; tends to get set to undecided-unix.
-                  (not (memq buffer-file-coding-system
-                             '(undecided undecided-unix undecided-dos))))
-             buffer-file-coding-system
-           (or (and (boundp 'sendmail-coding-system) sendmail-coding-system)
-               (and (default-boundp 'buffer-file-coding-system)
-                    (default-value 'buffer-file-coding-system))
-               'iso-latin-1))))
+         (if (fboundp 'select-message-coding-system)
+             (select-message-coding-system) ; Emacs has this since at least 21.1
+           (if (and (local-variable-p 'buffer-file-coding-system
+                                      (current-buffer)) ;XEmacs needs two args
+                    ;; We're not sure why, but buffer-file-coding-system
+                    ;; tends to get set to undecided-unix.
+                    (not (memq buffer-file-coding-system
+                               '(undecided undecided-unix undecided-dos))))
+               buffer-file-coding-system
+             (or (and (boundp 'sendmail-coding-system) sendmail-coding-system)
+                 (and (default-boundp 'buffer-file-coding-system)
+                      (default-value 'buffer-file-coding-system))
+                 'iso-latin-1)))))
     ;; Older versions of spost do not support -msgid and -mime.
     (unless mh-send-uses-spost-flag
       ;; Adding a Message-ID field looks good, makes it easier to search for
       ;; message in your +outbox, and best of all doesn't break threading for
       ;; the recipient if you reply to a message in your +outbox.
       (setq mh-send-args (concat "-msgid " mh-send-args))
-      ;; The default BCC encapsulation will make a MIME message unreadable.
+      ;; The default Bcc encapsulation will make a MIME message unreadable.
       ;; With nmh use the -mime arg to prevent this.
       (if (and (mh-variant-p 'nmh)
                (mh-goto-header-field "Bcc:")
@@ -925,8 +927,10 @@ CONFIG is the window configuration before sending mail."
                      (list "-form" mh-comp-formfile)))
     (setq new (make-temp-file "comp."))
     (rename-file (concat temp-folder "/" "1") new t)
-    (delete-file (concat temp-folder "/" ".mh_sequences"))
-    (delete-directory temp-folder)
+    ;; The temp folder could contain various metadata files.  Rather
+    ;; than trying to enumerate all the known files, just do a
+    ;; recursive delete on the directory.
+    (delete-directory temp-folder t)
     new))
 
 (defun mh-read-draft (use initial-contents delete-contents-file)
@@ -1054,6 +1058,7 @@ letter."
 (defun mh-insert-x-mailer ()
   "Append an X-Mailer field to the header.
 The versions of MH-E, Emacs, and MH are shown."
+  (or mh-variant-in-use (mh-variant-set mh-variant))
   ;; Lazily initialize mh-x-mailer-string.
   (when (and mh-insert-x-mailer-flag (null mh-x-mailer-string))
     (setq mh-x-mailer-string

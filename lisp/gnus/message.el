@@ -1,6 +1,6 @@
 ;;; message.el --- composing mail and news messages -*- lexical-binding: t -*-
 
-;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2018 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: mail, news
@@ -28,8 +28,7 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl-lib))
-
+(require 'cl-lib)
 (require 'mailheader)
 (require 'gmm-utils)
 (require 'mail-utils)
@@ -157,7 +156,7 @@ If this variable is nil, no such courtesy message will be added."
   :group 'message-interface
   :type 'regexp)
 
-(defcustom message-from-style mail-from-style
+(defcustom message-from-style 'angles
   "Specifies how \"From\" headers look.
 
 If nil, they contain just the return address like:
@@ -169,12 +168,16 @@ If `angles', they look like:
 
 Otherwise, most addresses look like `angles', but they look like
 `parens' if `angles' would need quoting and `parens' would not."
-  :version "23.2"
+  :version "27.1"
   :type '(choice (const :tag "simple" nil)
 		 (const parens)
 		 (const angles)
 		 (const default))
   :group 'message-headers)
+(make-obsolete-variable
+ 'message-from-style
+ "Only the `angles' value is valid according to RFC2822" "27.1")
+
 
 (defcustom message-insert-canlock t
   "Whether to insert a Cancel-Lock header in news postings."
@@ -549,10 +552,15 @@ The provided functions are:
 		(function-item message-forward-subject-name-subject)
 		(repeat :tag "List of functions" function)))
 
-(defcustom message-forward-as-mime t
+(defcustom message-forward-as-mime nil
   "Non-nil means forward messages as an inline/rfc822 MIME section.
-Otherwise, directly inline the old message in the forwarded message."
-  :version "21.1"
+Otherwise, directly inline the old message in the forwarded
+message.
+
+When forwarding as MIME, certain MIME-related headers in the
+forwarded message may be removed/altered to ensure that the
+resulting mail is syntactically valid."
+  :version "27.1"
   :group 'message-forwarding
   :link '(custom-manual "(message)Forwarding")
   :type 'boolean)
@@ -604,6 +612,9 @@ Done before generating the new subject of a forward."
 
 (defcustom message-forward-ignored-headers "^Content-Transfer-Encoding:\\|^X-Gnus"
   "All headers that match this regexp will be deleted when forwarding a message.
+This variable is only consulted when forwarding \"normally\", not
+when forwarding as MIME or the like.
+
 This may also be a list of regexps."
   :version "21.1"
   :group 'message-forwarding
@@ -614,11 +625,12 @@ This may also be a list of regexps."
 			      (widget-editable-list-match widget value)))
 		 regexp))
 
-(defcustom message-forward-included-headers nil
+(defcustom message-forward-included-headers
+  '("^From:" "^Subject:" "^Date:")
   "If non-nil, delete non-matching headers when forwarding a message.
 Only headers that match this regexp will be included.  This
 variable should be a regexp or a list of regexps."
-  :version "25.1"
+  :version "27.1"
   :group 'message-forwarding
   :type '(repeat :value-to-internal (lambda (widget value)
 				      (custom-split-regexp-maybe value))
@@ -1240,13 +1252,13 @@ called and its result is inserted."
   ;; Ease the transition from mail-mode to message-mode.  See bugs#4431, 5555.
   (concat (if (and (boundp 'mail-default-reply-to)
 		   (stringp mail-default-reply-to))
-	      (format "Reply-to: %s\n" mail-default-reply-to))
+	      (format "Reply-To: %s\n" mail-default-reply-to))
 	  (if (and (boundp 'mail-self-blind)
 		   mail-self-blind)
-	      (format "BCC: %s\n" user-mail-address))
+	      (format "Bcc: %s\n" user-mail-address))
 	  (if (and (boundp 'mail-archive-file-name)
 		   (stringp mail-archive-file-name))
-	      (format "FCC: %s\n" mail-archive-file-name))
+	      (format "Fcc: %s\n" mail-archive-file-name))
 	  mail-default-headers)
   "A string of header lines to be inserted in outgoing mails."
   :version "23.2"
@@ -1340,7 +1352,8 @@ If nil, Message won't auto-save."
   :link '(custom-manual "(message)Various Message Variables")
   :type '(choice directory (const :tag "Don't auto-save" nil)))
 
-(defcustom message-default-charset (and (not (mm-multibyte-p)) 'iso-8859-1)
+(defcustom message-default-charset (and (not enable-multibyte-characters)
+					'iso-8859-1)
   "Default charset used in non-MULE Emacsen.
 If nil, you might be asked to input the charset."
   :version "21.1"
@@ -1427,197 +1440,166 @@ starting with `not' and followed by regexps."
 (defface message-header-to
   '((((class color)
       (background dark))
-     (:foreground "DarkOliveGreen1" :bold t))
+     :foreground "DarkOliveGreen1" :bold t)
     (((class color)
       (background light))
-     (:foreground "MidnightBlue" :bold t))
+     :foreground "MidnightBlue" :bold t)
     (t
-     (:bold t :italic t)))
+     :bold t :italic t))
   "Face used for displaying To headers."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-header-to-face 'face-alias 'message-header-to)
-(put 'message-header-to-face 'obsolete-face "22.1")
 
 (defface message-header-cc
   '((((class color)
       (background dark))
-     (:foreground "chartreuse1" :bold t))
+     :foreground "chartreuse1" :bold t)
     (((class color)
       (background light))
-     (:foreground "MidnightBlue"))
+     :foreground "MidnightBlue")
     (t
-     (:bold t)))
+     :bold t))
   "Face used for displaying Cc headers."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-header-cc-face 'face-alias 'message-header-cc)
-(put 'message-header-cc-face 'obsolete-face "22.1")
 
 (defface message-header-subject
   '((((class color)
       (background dark))
-     (:foreground "OliveDrab1"))
+     :foreground "OliveDrab1")
     (((class color)
       (background light))
-     (:foreground "navy blue" :bold t))
+     :foreground "navy blue" :bold t)
     (t
-     (:bold t)))
+     :bold t))
   "Face used for displaying Subject headers."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-header-subject-face 'face-alias 'message-header-subject)
-(put 'message-header-subject-face 'obsolete-face "22.1")
 
 (defface message-header-newsgroups
   '((((class color)
       (background dark))
-     (:foreground "yellow" :bold t :italic t))
+     :foreground "yellow" :bold t :italic t)
     (((class color)
       (background light))
-     (:foreground "blue4" :bold t :italic t))
+     :foreground "blue4" :bold t :italic t)
     (t
-     (:bold t :italic t)))
+     :bold t :italic t))
   "Face used for displaying Newsgroups headers."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-header-newsgroups-face 'face-alias 'message-header-newsgroups)
-(put 'message-header-newsgroups-face 'obsolete-face "22.1")
 
 (defface message-header-other
   '((((class color)
       (background dark))
-     (:foreground "VioletRed1"))
+     :foreground "VioletRed1")
     (((class color)
       (background light))
-     (:foreground "steel blue"))
+     :foreground "steel blue")
     (t
-     (:bold t :italic t)))
+     :bold t :italic t))
   "Face used for displaying other headers."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-header-other-face 'face-alias 'message-header-other)
-(put 'message-header-other-face 'obsolete-face "22.1")
 
 (defface message-header-name
   '((((class color)
       (background dark))
-     (:foreground "green"))
+     :foreground "green")
     (((class color)
       (background light))
-     (:foreground "cornflower blue"))
+     :foreground "cornflower blue")
     (t
-     (:bold t)))
+     :bold t))
   "Face used for displaying header names."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-header-name-face 'face-alias 'message-header-name)
-(put 'message-header-name-face 'obsolete-face "22.1")
 
 (defface message-header-xheader
   '((((class color)
       (background dark))
-     (:foreground "DeepSkyBlue1"))
+     :foreground "DeepSkyBlue1")
     (((class color)
       (background light))
-     (:foreground "blue"))
+     :foreground "blue")
     (t
-     (:bold t)))
+     :bold t))
   "Face used for displaying X-Header headers."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-header-xheader-face 'face-alias 'message-header-xheader)
-(put 'message-header-xheader-face 'obsolete-face "22.1")
 
 (defface message-separator
   '((((class color)
       (background dark))
-     (:foreground "LightSkyBlue1"))
+     :foreground "LightSkyBlue1")
     (((class color)
       (background light))
-     (:foreground "brown"))
+     :foreground "brown")
     (t
-     (:bold t)))
+     :bold t))
   "Face used for displaying the separator."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-separator-face 'face-alias 'message-separator)
-(put 'message-separator-face 'obsolete-face "22.1")
 
 (defface message-cited-text
   '((((class color)
       (background dark))
-     (:foreground "LightPink1"))
+     :foreground "LightPink1")
     (((class color)
       (background light))
-     (:foreground "red"))
+     :foreground "red")
     (t
-     (:bold t)))
+     :bold t))
   "Face used for displaying cited text names."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-cited-text-face 'face-alias 'message-cited-text)
-(put 'message-cited-text-face 'obsolete-face "22.1")
 
 (defface message-mml
   '((((class color)
       (background dark))
-     (:foreground "MediumSpringGreen"))
+     :foreground "MediumSpringGreen")
     (((class color)
       (background light))
-     (:foreground "ForestGreen"))
+     :foreground "ForestGreen")
     (t
-     (:bold t)))
+     :bold t))
   "Face used for displaying MML."
   :group 'message-faces)
-;; backward-compatibility alias
-(put 'message-mml-face 'face-alias 'message-mml)
-(put 'message-mml-face 'obsolete-face "22.1")
 
-(defun message-font-lock-make-header-matcher (regexp)
-  (let ((form
-	 `(lambda (limit)
-	    (let ((start (point)))
-	      (save-restriction
-		(widen)
-		(goto-char (point-min))
-		(if (re-search-forward
-		     (concat "^" (regexp-quote mail-header-separator) "$")
-		     nil t)
-		    (setq limit (min limit (match-beginning 0))))
-		(goto-char start))
-	      (and (< start limit)
-		   (re-search-forward ,regexp limit t))))))
-    (if (featurep 'bytecomp)
-	(byte-compile form)
-      form)))
+(defun message-match-to-eoh (_limit)
+  (let ((start (point)))
+    (rfc822-goto-eoh)
+    ;; Typical situation: some temporary change causes the header to be
+    ;; incorrect, so EOH comes earlier than intended: the last lines of the
+    ;; intended headers are now not considered part of the header any more,
+    ;; so they don't have the multiline property set.  When the change is
+    ;; completed and the header has its correct shape again, the lack of the
+    ;; multiline property means we won't rehighlight the last lines of
+    ;; the header.
+    (if (< (point) start)
+        nil                             ;No header within start..limit.
+      ;; Here we disregard LIMIT so that we may extend the area again.
+      (set-match-data (list start (point)))
+      (point))))
 
 (defvar message-font-lock-keywords
   (let ((content "[ \t]*\\(.+\\(\n[ \t].*\\)*\\)\n?"))
-    `((,(message-font-lock-make-header-matcher
-	 (concat "^\\([Tt]o:\\)" content))
-       (1 'message-header-name)
-       (2 'message-header-to nil t))
-      (,(message-font-lock-make-header-matcher
-	 (concat "^\\(^[GBF]?[Cc][Cc]:\\|^[Rr]eply-[Tt]o:\\)" content))
-       (1 'message-header-name)
-       (2 'message-header-cc nil t))
-      (,(message-font-lock-make-header-matcher
-	 (concat "^\\([Ss]ubject:\\)" content))
-       (1 'message-header-name)
-       (2 'message-header-subject nil t))
-      (,(message-font-lock-make-header-matcher
-	 (concat "^\\([Nn]ewsgroups:\\|Followup-[Tt]o:\\)" content))
-       (1 'message-header-name)
-       (2 'message-header-newsgroups nil t))
-      (,(message-font-lock-make-header-matcher
-	 (concat "^\\(X-[A-Za-z0-9-]+:\\|In-Reply-To:\\)" content))
-       (1 'message-header-name)
-       (2 'message-header-xheader))
-      (,(message-font-lock-make-header-matcher
-	 (concat "^\\([A-Z][^: \n\t]+:\\)" content))
-       (1 'message-header-name)
-       (2 'message-header-other nil t))
+    `((message-match-to-eoh
+       (,(concat "^\\([Tt]o:\\)" content)
+	(progn (goto-char (match-beginning 0)) (match-end 0)) nil
+	(1 'message-header-name)
+	(2 'message-header-to nil t))
+       (,(concat "^\\(^[GBF]?[Cc][Cc]:\\|^[Rr]eply-[Tt]o:\\)" content)
+	(progn (goto-char (match-beginning 0)) (match-end 0)) nil
+	(1 'message-header-name)
+	(2 'message-header-cc nil t))
+       (,(concat "^\\([Ss]ubject:\\)" content)
+	(progn (goto-char (match-beginning 0)) (match-end 0)) nil
+	(1 'message-header-name)
+	(2 'message-header-subject nil t))
+       (,(concat "^\\([Nn]ewsgroups:\\|Followup-[Tt]o:\\)" content)
+	(progn (goto-char (match-beginning 0)) (match-end 0)) nil
+	(1 'message-header-name)
+	(2 'message-header-newsgroups nil t))
+       (,(concat "^\\(X-[A-Za-z0-9-]+:\\|In-Reply-To:\\)" content)
+	(progn (goto-char (match-beginning 0)) (match-end 0)) nil
+	(1 'message-header-name)
+	(2 'message-header-xheader))
+       (,(concat "^\\([A-Z][^: \n\t]+:\\)" content)
+	(progn (goto-char (match-beginning 0)) (match-end 0)) nil
+        (1 'message-header-name)
+        (2 'message-header-other nil t)))
       ,@(if (and mail-header-separator
 		 (not (equal mail-header-separator "")))
 	    `((,(concat "^\\(" (regexp-quote mail-header-separator) "\\)$")
@@ -2440,7 +2422,9 @@ Return the number of headers removed."
     (while (and (not (eobp))
 		(not last))
       (if (if reverse
-	      (not (looking-at regexp))
+	      (and (not (looking-at regexp))
+		   ;; Don't remove things not looking like header.
+		   (looking-at "[!-9;-~]+:"))
 	    (looking-at regexp))
 	  (progn
 	    (cl-incf number)
@@ -2613,6 +2597,36 @@ PGG manual, depending on the value of `mml2015-use'."
 		       arg)
 		      (t
 		       'message)))))
+
+(defun message-all-recipients ()
+  "Return a list of all recipients in the message, looking at TO, Cc and Bcc.
+
+Each recipient is in the format of `mail-extract-address-components'."
+  (mapcan (lambda (header)
+            (let ((header-value (message-fetch-field header)))
+              (and
+               header-value
+               (mail-extract-address-components header-value t))))
+          '("To" "Cc" "Bcc")))
+
+(defun message-all-epg-keys-available-p ()
+  "Return non-nil if the pgp keyring has a public key for each recipient."
+  (require 'epa)
+  (let ((context (epg-make-context epa-protocol)))
+    (catch 'break
+      (dolist (recipient (message-all-recipients))
+        (let ((recipient-email (cadr recipient)))
+          (when (and recipient-email (not (epg-list-keys context recipient-email)))
+            (throw 'break nil))))
+      t)))
+
+(defun message-sign-encrypt-if-all-keys-available ()
+  "Add MML tag to encrypt message when there is a key for each recipient.
+
+Consider adding this function to `message-send-hook' to
+systematically send encrypted emails when possible."
+  (when (message-all-epg-keys-available-p)
+    (mml-secure-message-sign-encrypt)))
 
 
 
@@ -2851,8 +2865,7 @@ See also `message-forbidden-properties'."
     (message-display-abbrev))
   (when (and message-strip-special-text-properties
 	     (message-tamago-not-in-use-p begin))
-    (let ((buffer-read-only nil)
-	  (inhibit-read-only t))
+    (let ((inhibit-read-only t))
       (remove-text-properties begin end message-forbidden-properties))))
 
 (defvar message-smileys '(":-)" ":)"
@@ -2959,7 +2972,7 @@ M-RET    `message-newline-and-reformat' (break the line and reformat)."
   (easy-menu-add message-mode-menu message-mode-map)
   (easy-menu-add message-mode-field-menu message-mode-map)
   ;; Mmmm... Forbidden properties...
-  (add-hook 'after-change-functions 'message-strip-forbidden-properties
+  (add-hook 'after-change-functions #'message-strip-forbidden-properties
 	    nil 'local)
   ;; Allow mail alias things.
   (cond
@@ -2967,7 +2980,9 @@ M-RET    `message-newline-and-reformat' (break the line and reformat)."
     (mail-abbrevs-setup))
    ((message-mail-alias-type-p 'ecomplete)
     (ecomplete-setup)))
-  (add-hook 'completion-at-point-functions 'message-completion-function nil t)
+  ;; FIXME: merge the completion tables from ecomplete/bbdb/...?
+  ;;(add-hook 'completion-at-point-functions #'message-ecomplete-capf nil t)
+  (add-hook 'completion-at-point-functions #'message-completion-function nil t)
   (unless buffer-file-name
     (message-set-auto-save-file-name))
   (unless (buffer-base-buffer)
@@ -3101,17 +3116,15 @@ M-RET    `message-newline-and-reformat' (break the line and reformat)."
   (push-mark)
   (message-position-on-field "Summary" "Subject"))
 
-(defun message-goto-body ()
-  "Move point to the beginning of the message body."
-  (interactive)
-  (when (and (called-interactively-p 'any)
-	     (looking-at "[ \t]*\n"))
+(define-obsolete-function-alias 'message-goto-body-1 'message-goto-body "27.1")
+(defun message-goto-body (&optional interactive)
+  "Move point to the beginning of the message body.
+Returns point."
+  (interactive "p")
+  (when interactive
+    (when (looking-at "[ \t]*\n")
     (expand-abbrev))
-  (push-mark)
-  (message-goto-body-1))
-
-(defun message-goto-body-1 ()
-  "Go to the body and return point."
+    (push-mark))
   (goto-char (point-min))
   (or (search-forward (concat "\n" mail-header-separator "\n") nil t)
       ;; If the message is mangled, find the end of the headers the
@@ -3130,12 +3143,12 @@ M-RET    `message-newline-and-reformat' (break the line and reformat)."
   "Return t if point is in the message body."
   (>= (point)
       (save-excursion
-	(message-goto-body-1))))
+	(message-goto-body))))
 
-(defun message-goto-eoh ()
+(defun message-goto-eoh (&optional interactive)
   "Move point to the end of the headers."
-  (interactive)
-  (message-goto-body)
+  (interactive "p")
+  (message-goto-body interactive)
   (forward-line -1))
 
 (defun message-goto-signature ()
@@ -3450,7 +3463,8 @@ Message buffers and is not meant to be called directly."
 (defun message-do-auto-fill ()
   "Like `do-auto-fill', but don't fill in message header."
   (unless (message-point-in-header-p)
-    (do-auto-fill)))
+    (let ((paragraph-separate (default-value 'paragraph-separate)))
+      (do-auto-fill))))
 
 (defun message-insert-signature (&optional force)
   "Insert a signature.  See documentation for variable `message-signature'."
@@ -3551,7 +3565,7 @@ Note that this should not be used in newsgroups."
       (message-remove-header "Disposition-Notification-To"))
     (message-goto-eoh)
     (insert (format "Disposition-Notification-To: %s\n"
-		    (or (message-field-value "Reply-to")
+		    (or (message-field-value "Reply-To")
 			(message-field-value "From")
 			(message-make-from))))))
 
@@ -4284,7 +4298,7 @@ conformance."
 				(point-max))))
 	       (setq char (char-after)))
 	(when (or (< char 128)
-		  (and (mm-multibyte-p)
+		  (and enable-multibyte-characters
 		       (memq (char-charset char)
 			     '(eight-bit-control eight-bit-graphic
 						 ;; Emacs 23, Bug#1770:
@@ -4316,7 +4330,7 @@ conformance."
 	(while (not (eobp))
 	  (when (let ((char (char-after)))
 		  (or (< char 128)
-		      (and (mm-multibyte-p)
+		      (and enable-multibyte-characters
 			   ;; FIXME: Wrong for Emacs 23 (unicode) and for
 			   ;; things like undecodable utf-8 (in Emacs 21?).
 			   ;; Should at least use find-coding-systems-region.
@@ -4678,9 +4692,11 @@ that instead."
 	(message-send-mail-with-sendmail))
        ((equal (car method) "smtp")
 	(require 'smtpmail)
-	(let ((smtpmail-smtp-server (nth 1 method))
-	      (smtpmail-smtp-service (nth 2 method))
-	      (smtpmail-smtp-user (or (nth 3 method) smtpmail-smtp-user)))
+	(let* ((smtpmail-smtp-server (nth 1 method))
+	       (service (nth 2 method))
+	       (port (string-to-number service))
+	       (smtpmail-smtp-service (if (> port 0) port service))
+	       (smtpmail-smtp-user (or (nth 3 method) smtpmail-smtp-user)))
 	  (message-smtpmail-send-it)))
        (t
 	(error "Unknown method %s" method))))))
@@ -5425,7 +5441,7 @@ Otherwise, generate and save a value for `canlock-password' first."
 	       (concat "^" (regexp-quote mail-header-separator) "$")
 	       nil t)
 	  (replace-match "" t t ))
-	;; Process FCC operations.
+	;; Process Fcc operations.
 	(while list
 	  (setq file (pop list))
 	  (if (string-match "^[ \t]*|[ \t]*\\(.*\\)[ \t]*$" file)
@@ -6256,14 +6272,14 @@ they are."
 (declare-function beginning-of-visual-line "simple" (&optional n))
 
 (defun message-beginning-of-header (handle-folded)
-  "Move point to beginning of header’s value.
+  "Move point to beginning of header's value.
 
 When point is at the first header line, moves it after the colon
 and spaces separating header name and header value.
 
 When point is in a continuation line of a folded header (i.e. the
 line starts with a space), the behavior depends on HANDLE-FOLDED
-argument.  If it’s nil, function moves the point to the start of
+argument.  If it's nil, function moves the point to the start of
 the header continuation; otherwise, function locates the
 beginning of the header and moves point past the colon as is the
 case of single-line headers.
@@ -6271,7 +6287,7 @@ case of single-line headers.
 No check whether point is inside of a header or body of the
 message is performed.
 
-Returns point or nil if beginning of header’s value could not be
+Returns point or nil if beginning of header's value could not be
 found.  In the latter case, the point is still moved to the
 beginning of line (possibly after attempting to move it to the
 beginning of a folded header)."
@@ -6867,6 +6883,9 @@ want to get rid of this query permanently.")))
 		    (setq recipients (delq recip recipients))))))))
 
       (setq recipients (message-prune-recipients recipients))
+      (setq recipients
+	    (cl-loop for (id . address) in recipients
+		     collect (cons id (message--alter-repeat-address address))))
 
       ;; Build the header alist.  Allow the user to be asked whether
       ;; or not to reply to all recipients in a wide reply.
@@ -6896,6 +6915,15 @@ want to get rid of this query permanently.")))
 		       (string-match dup-match (car recipient)))
 	      (setq recipients (delq recipient recipients))))))))
   recipients)
+
+(defun message--alter-repeat-address (address)
+  "Transform an address on the form \"\"foo@bar.com\"\" <foo@bar.com>\".
+The first bit will be elided if a match is made."
+  (let ((bits (gnus-extract-address-components address)))
+    (if (equal (car bits) (cadr bits))
+	(car bits)
+      ;; Return the original address if we don't have repetition.
+      address)))
 
 (defcustom message-simplify-subject-functions
   '(message-strip-list-identifiers
@@ -7411,7 +7439,8 @@ Optional DIGEST will use digest to forward."
       (when message-forward-included-headers
 	(message-remove-header
 	 (if (listp message-forward-included-headers)
-	     (regexp-opt message-forward-included-headers)
+	     (mapconcat #'identity (cons "^$" message-forward-included-headers)
+			"\\|")
 	   message-forward-included-headers)
 	 t nil t)))))
 
@@ -7885,6 +7914,8 @@ See `gmm-tool-bar-from-list' for the format of the list."
   :group 'message)
 
 (defvar image-load-path)
+(declare-function image-load-path-for-library "image"
+		  (library image &optional path no-error))
 
 (defun message-make-tool-bar (&optional force)
   "Make a message mode tool bar from `message-tool-bar-list'.
@@ -7911,6 +7942,7 @@ When FORCE, rebuild the tool bar."
   :type 'regexp)
 
 (defcustom message-completion-alist
+  ;; FIXME: Make it possible to use the standard completion UI.
   (list (cons message-newgroups-header-regexp 'message-expand-group)
 	'("^\\(Resent-\\)?\\(To\\|B?Cc\\):" . message-expand-name)
 	'("^\\(Reply-To\\|From\\|Mail-Followup-To\\|Mail-Copies-To\\):"
@@ -8235,16 +8267,19 @@ From headers in the original article."
 
 (autoload 'ecomplete-display-matches "ecomplete")
 
+(defun message--in-tocc-p ()
+  (and (memq (char-after (point-at-bol)) '(?C ?T ?\t ? ))
+       (message-point-in-header-p)
+       (save-excursion
+	 (beginning-of-line)
+	 (while (and (memq (char-after) '(?\t ? ))
+		     (zerop (forward-line -1))))
+	 (looking-at "To:\\|Cc:"))))
+
 (defun message-display-abbrev (&optional choose)
   "Display the next possible abbrev for the text before point."
   (interactive (list t))
-  (when (and (memq (char-after (point-at-bol)) '(?C ?T ?\t ? ))
-	     (message-point-in-header-p)
-	     (save-excursion
-	       (beginning-of-line)
-	       (while (and (memq (char-after) '(?\t ? ))
-			   (zerop (forward-line -1))))
-	       (looking-at "To:\\|Cc:")))
+  (when (message--in-tocc-p)
     (let* ((end (point))
 	   (start (save-excursion
 		    (and (re-search-backward "[\n\t ]" nil t)
@@ -8256,6 +8291,20 @@ From headers in the original article."
       (when (and choose match)
 	(delete-region start end)
 	(insert match)))))
+
+(defun message-ecomplete-capf ()
+  "Return completion data for email addresses in Ecomplete.
+Meant for use on `completion-at-point-functions'."
+  (when (and (bound-and-true-p ecomplete-database)
+             (fboundp 'ecomplete-completion-table)
+             (message--in-tocc-p))
+    (let ((end (save-excursion
+                 (skip-chars-forward "^, \t\n")
+                 (point)))
+	  (start (save-excursion
+                   (skip-chars-backward "^, \t\n")
+                   (point))))
+      `(,start ,end ,(ecomplete-completion-table 'mail)))))
 
 ;; To send pre-formatted letters like the example below, you can use
 ;; `message-send-form-letter':
@@ -8364,6 +8413,9 @@ even if NEW-VALUE is empty."
 	(message-position-on-field header))
       (insert new-value))))
 
+(make-obsolete-variable
+ 'message-recipients-without-full-name
+ "Recipients are simplified by default" "27.1")
 (defcustom message-recipients-without-full-name
   (list "ding@gnus.org"
 	"bugs@gnus.org"
@@ -8379,6 +8431,7 @@ Used in `message-simplify-recipients'."
   :version "23.1" ;; No Gnus
   :group 'message-headers)
 
+(make-obsolete 'message-simplify-recipients nil "27.1")
 (defun message-simplify-recipients ()
   (interactive)
   (dolist (hdr '("Cc" "To"))

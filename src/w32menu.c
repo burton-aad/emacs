@@ -1,5 +1,5 @@
 /* Menu support for GNU Emacs on the Microsoft Windows API.
-   Copyright (C) 1986, 1988, 1993-1994, 1996, 1998-1999, 2001-2017 Free
+   Copyright (C) 1986, 1988, 1993-1994, 1996, 1998-1999, 2001-2018 Free
    Software Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -1407,7 +1407,8 @@ add_menu_item (HMENU menu, widget_value *wv, HMENU item)
 		 Windows alike.  MSVC headers get it right; hopefully,
 		 MinGW headers will, too.  */
 	      eassert (STRINGP (wv->help));
-	      info.dwItemData = (ULONG_PTR) XUNTAG (wv->help, Lisp_String);
+	      info.dwItemData = (ULONG_PTR) XUNTAG (wv->help, Lisp_String,
+						    struct Lisp_String);
 	    }
 	  if (wv->button_type == BUTTON_TYPE_RADIO)
 	    {
@@ -1571,7 +1572,7 @@ w32_free_menu_strings (HWND hwnd)
 /* The following is used by delayed window autoselection.  */
 
 DEFUN ("menu-or-popup-active-p", Fmenu_or_popup_active_p, Smenu_or_popup_active_p, 0, 0, 0,
-       doc: /* Return t if a menu or popup dialog is active on selected frame.  */)
+       doc: /* SKIP: real doc in xmenu.c.  */)
   (void)
 {
   struct frame *f;

@@ -1,6 +1,6 @@
 /* ebrowse.c --- parsing files for the ebrowse C++ browser
 
-Copyright (C) 1992-2017 Free Software Foundation, Inc.
+Copyright (C) 1992-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -494,7 +494,7 @@ yyerror (const char *format, const char *s)
 /* Like malloc but print an error and exit if not enough memory is
    available.  */
 
-static void *
+static void * ATTRIBUTE_MALLOC
 xmalloc (size_t nbytes)
 {
   void *p = malloc (nbytes);

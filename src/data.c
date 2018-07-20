@@ -1,5 +1,5 @@
 /* Primitive operations on Lisp data types for GNU Emacs Lisp interpreter.
-   Copyright (C) 1985-1986, 1988, 1993-1995, 1997-2017 Free Software
+   Copyright (C) 1985-1986, 1988, 1993-1995, 1997-2018 Free Software
    Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -1049,7 +1049,10 @@ wrong_choice (Lisp_Object choice, Lisp_Object wrong)
     }
 
   obj = Fconcat (i, args);
-  SAFE_FREE ();
+
+  /* No need to call SAFE_FREE, since signaling does that for us.  */
+  (void) sa_count;
+
   xsignal2 (Qerror, obj, wrong);
 }
 
@@ -1188,7 +1191,7 @@ swap_in_global_binding (struct Lisp_Symbol *symbol)
 
   /* Indicate that the global binding is set up now.  */
   set_blv_where (blv, Qnil);
-  set_blv_found (blv, 0);
+  set_blv_found (blv, false);
 }
 
 /* Set up the buffer-local symbol SYMBOL for validity in the current buffer.
@@ -1257,7 +1260,6 @@ find_symbol_value (Lisp_Object symbol)
 	swap_in_symval_forwarding (sym, blv);
 	return blv->fwd ? do_symval_forwarding (blv->fwd) : blv_value (blv);
       }
-      /* FALLTHROUGH */
     case SYMBOL_FORWARDED:
       return do_symval_forwarding (SYMBOL_FWD (sym));
     default: emacs_abort ();
@@ -1366,7 +1368,7 @@ set_internal (Lisp_Object symbol, Lisp_Object newval, Lisp_Object where,
 	    tem1 = assq_no_quit (symbol,
 				 BVAR (XBUFFER (where), local_var_alist));
 	    set_blv_where (blv, where);
-	    blv->found = 1;
+	    blv->found = true;
 
 	    if (NILP (tem1))
 	      {
@@ -1381,7 +1383,7 @@ set_internal (Lisp_Object symbol, Lisp_Object newval, Lisp_Object where,
 		if (bindflag || !blv->local_if_set
 		    || let_shadows_buffer_binding_p (sym))
 		  {
-		    blv->found = 0;
+		    blv->found = false;
 		    tem1 = blv->defcell;
 		  }
 		/* If it's a local_if_set, being set not bound,
@@ -1481,7 +1483,7 @@ SYMBOL is the variable being changed.
 NEWVAL is the value it will be changed to.
 OPERATION is a symbol representing the kind of change, one of: `set',
 `let', `unlet', `makunbound', and `defvaralias'.
-WHERE is a buffer if the buffer-local value of the variable being
+WHERE is a buffer if the buffer-local value of the variable is being
 changed, nil otherwise.
 
 All writes to aliases of SYMBOL will call WATCH-FUNCTION too.  */)
@@ -1711,11 +1713,21 @@ set_default_internal (Lisp_Object symbol, Lisp_Object value,
 	       set it in the buffers that don't nominally have a local value.  */
 	    if (idx > 0)
 	      {
-		struct buffer *b;
+		Lisp_Object buf, tail;
 
-		FOR_EACH_BUFFER (b)
-		  if (!PER_BUFFER_VALUE_P (b, idx))
-		    set_per_buffer_value (b, offset, value);
+		/* Do this only in live buffers, so that if there are
+		   a lot of buffers which are dead, that doesn't slow
+		   down let-binding of variables that are
+		   automatically local when set, like
+		   case-fold-search.  This is for Lisp programs that
+		   let-bind such variables in their inner loops.  */
+		FOR_EACH_LIVE_BUFFER (tail, buf)
+		  {
+		    struct buffer *b = XBUFFER (buf);
+
+		    if (!PER_BUFFER_VALUE_P (b, idx))
+		      set_per_buffer_value (b, offset, value);
+		  }
 	      }
 	  }
 	else
@@ -1796,7 +1808,7 @@ make_blv (struct Lisp_Symbol *sym, bool forwarded,
   blv->local_if_set = 0;
   set_blv_defcell (blv, tem);
   set_blv_valcell (blv, tem);
-  set_blv_found (blv, 0);
+  set_blv_found (blv, false);
   return blv;
 }
 
@@ -1945,29 +1957,16 @@ Instead, use `add-hook' and specify t for the LOCAL argument.  */)
 	  CALLN (Fmessage, format, SYMBOL_NAME (variable));
 	}
 
-      /* Swap out any local binding for some other buffer, and make
-	 sure the current value is permanently recorded, if it's the
-	 default value.  */
-      find_symbol_value (variable);
+      if (BUFFERP (blv->where) && current_buffer == XBUFFER (blv->where))
+        /* Make sure the current value is permanently recorded, if it's the
+           default value.  */
+        swap_in_global_binding (sym);
 
       bset_local_var_alist
 	(current_buffer,
 	 Fcons (Fcons (variable, XCDR (blv->defcell)),
 		BVAR (current_buffer, local_var_alist)));
-
-      /* Make sure symbol does not think it is set up for this buffer;
-	 force it to look once again for this buffer's value.  */
-      if (current_buffer == XBUFFER (blv->where))
-	set_blv_where (blv, Qnil);
-      set_blv_found (blv, 0);
     }
-
-  /* If the symbol forwards into a C variable, then load the binding
-     for this buffer now.  If C code modifies the variable before we
-     load the binding in, then that new value will clobber the default
-     binding the next time we unload it.  */
-  if (blv->fwd)
-    swap_in_symval_forwarding (sym, blv);
 
   return variable;
 }
@@ -2030,11 +2029,7 @@ From now on the default value will apply in this buffer.  Return VARIABLE.  */)
   {
     Lisp_Object buf; XSETBUFFER (buf, current_buffer);
     if (EQ (buf, blv->where))
-      {
-	set_blv_where (blv, Qnil);
-	blv->found = 0;
-	find_symbol_value (variable);
-      }
+      swap_in_global_binding (sym);
   }
 
   return variable;
@@ -2171,47 +2166,6 @@ If the current binding is global (the default), the value is nil.  */)
     }
 }
 
-/* This code is disabled now that we use the selected frame to return
-   keyboard-local-values.  */
-#if 0
-extern struct terminal *get_terminal (Lisp_Object display, int);
-
-DEFUN ("terminal-local-value", Fterminal_local_value,
-       Sterminal_local_value, 2, 2, 0,
-       doc: /* Return the terminal-local value of SYMBOL on TERMINAL.
-If SYMBOL is not a terminal-local variable, then return its normal
-value, like `symbol-value'.
-
-TERMINAL may be a terminal object, a frame, or nil (meaning the
-selected frame's terminal device).  */)
-  (Lisp_Object symbol, Lisp_Object terminal)
-{
-  Lisp_Object result;
-  struct terminal *t = get_terminal (terminal, 1);
-  push_kboard (t->kboard);
-  result = Fsymbol_value (symbol);
-  pop_kboard ();
-  return result;
-}
-
-DEFUN ("set-terminal-local-value", Fset_terminal_local_value,
-       Sset_terminal_local_value, 3, 3, 0,
-       doc: /* Set the terminal-local binding of SYMBOL on TERMINAL to VALUE.
-If VARIABLE is not a terminal-local variable, then set its normal
-binding, like `set'.
-
-TERMINAL may be a terminal object, a frame, or nil (meaning the
-selected frame's terminal device).  */)
-  (Lisp_Object symbol, Lisp_Object terminal, Lisp_Object value)
-{
-  Lisp_Object result;
-  struct terminal *t = get_terminal (terminal, 1);
-  push_kboard (d->kboard);
-  result = Fset (symbol, value);
-  pop_kboard ();
-  return result;
-}
-#endif
 
 /* Find the function at the end of a chain of symbol function indirections.  */
 
@@ -2271,8 +2225,8 @@ function chain of symbols.  */)
 /* Extract and set vector and string elements.  */
 
 DEFUN ("aref", Faref, Saref, 2, 2, 0,
-       doc: /* Return the element of ARG at index IDX.
-ARG may be a vector, a string, a char-table, a bool-vector, a record,
+       doc: /* Return the element of ARRAY at index IDX.
+ARRAY may be a vector, a string, a char-table, a bool-vector, a record,
 or a byte-code object.  IDX starts at 0.  */)
   (register Lisp_Object array, Lisp_Object idx)
 {
@@ -2734,9 +2688,7 @@ present, base 10 is used.  BASE must be between 2 and 16 (inclusive).
 If the base used is not 10, STRING is always parsed as an integer.  */)
   (register Lisp_Object string, Lisp_Object base)
 {
-  register char *p;
-  register int b;
-  Lisp_Object val;
+  int b;
 
   CHECK_STRING (string);
 
@@ -2750,11 +2702,12 @@ If the base used is not 10, STRING is always parsed as an integer.  */)
       b = XINT (base);
     }
 
-  p = SSDATA (string);
+  char *p = SSDATA (string);
   while (*p == ' ' || *p == '\t')
     p++;
 
-  val = string_to_number (p, b, 1);
+  int flags = S2N_IGNORE_TRAILING | S2N_OVERFLOW_TO_FLOAT;
+  Lisp_Object val = string_to_number (p, b, flags);
   return NILP (val) ? make_number (0) : val;
 }
 
@@ -3846,10 +3799,6 @@ syms_of_data (void)
   defsubr (&Slocal_variable_p);
   defsubr (&Slocal_variable_if_set_p);
   defsubr (&Svariable_binding_locus);
-#if 0                           /* XXX Remove this. --lorentey */
-  defsubr (&Sterminal_local_value);
-  defsubr (&Sset_terminal_local_value);
-#endif
   defsubr (&Saref);
   defsubr (&Saset);
   defsubr (&Snumber_to_string);

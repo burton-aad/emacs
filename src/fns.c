@@ -1,6 +1,6 @@
 /* Random utility Lisp functions.
 
-Copyright (C) 1985-1987, 1993-1995, 1997-2017 Free Software Foundation,
+Copyright (C) 1985-1987, 1993-1995, 1997-2018 Free Software Foundation,
 Inc.
 
 This file is part of GNU Emacs.
@@ -151,6 +151,72 @@ If STRING is multibyte, this may be greater than the length of STRING.  */)
 {
   CHECK_STRING (string);
   return make_number (SBYTES (string));
+}
+
+DEFUN ("string-distance", Fstring_distance, Sstring_distance, 2, 3, 0,
+       doc: /* Return Levenshtein distance between STRING1 and STRING2.
+The distance is the number of deletions, insertions, and substitutions
+required to transform STRING1 into STRING2.
+If BYTECOMPARE is nil or omitted, compute distance in terms of characters.
+If BYTECOMPARE is non-nil, compute distance in terms of bytes.
+Letter-case is significant, but text properties are ignored. */)
+  (Lisp_Object string1, Lisp_Object string2, Lisp_Object bytecompare)
+
+{
+  CHECK_STRING (string1);
+  CHECK_STRING (string2);
+
+  bool use_byte_compare =
+    !NILP (bytecompare)
+    || (!STRING_MULTIBYTE (string1) && !STRING_MULTIBYTE (string2));
+  ptrdiff_t len1 = use_byte_compare ? SBYTES (string1) : SCHARS (string1);
+  ptrdiff_t len2 = use_byte_compare ? SBYTES (string2) : SCHARS (string2);
+  ptrdiff_t x, y, lastdiag, olddiag;
+
+  USE_SAFE_ALLOCA;
+  ptrdiff_t *column = SAFE_ALLOCA ((len1 + 1) * sizeof (ptrdiff_t));
+  for (y = 1; y <= len1; y++)
+    column[y] = y;
+
+  if (use_byte_compare)
+    {
+      char *s1 = SSDATA (string1);
+      char *s2 = SSDATA (string2);
+
+      for (x = 1; x <= len2; x++)
+        {
+          column[0] = x;
+          for (y = 1, lastdiag = x - 1; y <= len1; y++)
+            {
+              olddiag = column[y];
+              column[y] = min (min (column[y] + 1, column[y-1] + 1),
+			       lastdiag + (s1[y-1] == s2[x-1] ? 0 : 1));
+              lastdiag = olddiag;
+            }
+        }
+    }
+  else
+    {
+      int c1, c2;
+      ptrdiff_t i1, i1_byte, i2 = 0, i2_byte = 0;
+      for (x = 1; x <= len2; x++)
+        {
+          column[0] = x;
+          FETCH_STRING_CHAR_ADVANCE (c2, string2, i2, i2_byte);
+          i1 = i1_byte = 0;
+          for (y = 1, lastdiag = x - 1; y <= len1; y++)
+            {
+              olddiag = column[y];
+              FETCH_STRING_CHAR_ADVANCE (c1, string1, i1, i1_byte);
+              column[y] = min (min (column[y] + 1, column[y-1] + 1),
+			       lastdiag + (c1 == c2 ? 0 : 1));
+              lastdiag = olddiag;
+            }
+        }
+    }
+
+  SAFE_FREE ();
+  return make_number (column[len1]);
 }
 
 DEFUN ("string-equal", Fstring_equal, Sstring_equal, 2, 2, 0,
@@ -652,7 +718,7 @@ concat (ptrdiff_t nargs, Lisp_Object *args,
     val = make_uninit_string (result_len);
 
   /* In `append', if all but last arg are nil, return last arg.  */
-  if (target_type == Lisp_Cons && EQ (val, Qnil))
+  if (target_type == Lisp_Cons && NILP (val))
     return last_tail;
 
   /* Copy the contents of the args into the result.  */
@@ -1353,6 +1419,29 @@ DEFUN ("elt", Felt, Selt, 2, 2, 0,
   return Faref (sequence, n);
 }
 
+enum { WORDS_PER_DOUBLE = (sizeof (double) / sizeof (EMACS_UINT)
+                          + (sizeof (double) % sizeof (EMACS_UINT) != 0)) };
+union double_and_words
+{
+  double val;
+  EMACS_UINT word[WORDS_PER_DOUBLE];
+};
+
+/* Return true if X and Y are the same floating-point value.
+   This looks at X's and Y's representation, since (unlike '==')
+   it returns true if X and Y are the same NaN.  */
+static bool
+same_float (Lisp_Object x, Lisp_Object y)
+{
+  union double_and_words
+    xu = { .val = XFLOAT_DATA (x) },
+    yu = { .val = XFLOAT_DATA (y) };
+  EMACS_UINT neql = 0;
+  for (int i = 0; i < WORDS_PER_DOUBLE; i++)
+    neql |= xu.word[i] ^ yu.word[i];
+  return !neql;
+}
+
 DEFUN ("member", Fmember, Smember, 2, 2, 0,
        doc: /* Return non-nil if ELT is an element of LIST.  Comparison done with `equal'.
 The value is actually the tail of LIST whose car is ELT.  */)
@@ -1391,7 +1480,7 @@ The value is actually the tail of LIST whose car is ELT.  */)
   FOR_EACH_TAIL (tail)
     {
       Lisp_Object tem = XCAR (tail);
-      if (FLOATP (tem) && equal_no_quit (elt, tem))
+      if (FLOATP (tem) && same_float (elt, tem))
 	return tail;
     }
   CHECK_LIST_END (tail, list);
@@ -2109,7 +2198,7 @@ Floating-point numbers of equal value are `eql', but they may not be `eq'.  */)
   (Lisp_Object obj1, Lisp_Object obj2)
 {
   if (FLOATP (obj1))
-    return equal_no_quit (obj1, obj2) ? Qt : Qnil;
+    return FLOATP (obj2) && same_float (obj1, obj2) ? Qt : Qnil;
   else
     return EQ (obj1, obj2) ? Qt : Qnil;
 }
@@ -2200,13 +2289,7 @@ internal_equal (Lisp_Object o1, Lisp_Object o2, enum equal_kind equal_kind,
   switch (XTYPE (o1))
     {
     case Lisp_Float:
-      {
-	double d1 = XFLOAT_DATA (o1);
-	double d2 = XFLOAT_DATA (o2);
-	/* If d is a NaN, then d != d. Two NaNs should be `equal' even
-	   though they are not =.  */
-	return d1 == d2 || (d1 != d1 && d2 != d2);
-      }
+      return same_float (o1, o2);
 
     case Lisp_Cons:
       if (equal_kind == EQUAL_NO_QUIT)
@@ -3319,6 +3402,7 @@ If the region can't be decoded, signal an error and don't modify the buffer.  */
      and delete the old.  (Insert first in order to preserve markers.)  */
   TEMP_SET_PT_BOTH (XFASTINT (beg), ibeg);
   insert_1_both (decoded, inserted_chars, decoded_length, 0, 1, 0);
+  signal_after_change (XFASTINT (beg), 0, inserted_chars);
   SAFE_FREE ();
 
   /* Delete the original text.  */
@@ -3639,24 +3723,20 @@ HASH_INDEX (struct Lisp_Hash_Table *h, ptrdiff_t idx)
   return XINT (AREF (h->index, idx));
 }
 
-/* Compare KEY1 which has hash code HASH1 and KEY2 with hash code
-   HASH2 in hash table H using `eql'.  Value is true if KEY1 and
-   KEY2 are the same.  */
+/* Compare KEY1 and KEY2 in hash table HT using `eql'.  Value is true
+   if KEY1 and KEY2 are the same.  KEY1 and KEY2 must not be eq.  */
 
 static bool
 cmpfn_eql (struct hash_table_test *ht,
 	   Lisp_Object key1,
 	   Lisp_Object key2)
 {
-  return (FLOATP (key1)
-	  && FLOATP (key2)
-	  && XFLOAT_DATA (key1) == XFLOAT_DATA (key2));
+  return FLOATP (key1) && FLOATP (key2) && same_float (key1, key2);
 }
 
 
-/* Compare KEY1 which has hash code HASH1 and KEY2 with hash code
-   HASH2 in hash table H using `equal'.  Value is true if KEY1 and
-   KEY2 are the same.  */
+/* Compare KEY1 and KEY2 in hash table HT using `equal'.  Value is
+   true if KEY1 and KEY2 are the same.  */
 
 static bool
 cmpfn_equal (struct hash_table_test *ht,
@@ -3667,9 +3747,8 @@ cmpfn_equal (struct hash_table_test *ht,
 }
 
 
-/* Compare KEY1 which has hash code HASH1, and KEY2 with hash code
-   HASH2 in hash table H using H->user_cmp_function.  Value is true
-   if KEY1 and KEY2 are the same.  */
+/* Compare KEY1 and KEY2 in hash table HT using HT->user_cmp_function.
+   Value is true if KEY1 and KEY2 are the same.  */
 
 static bool
 cmpfn_user_defined (struct hash_table_test *ht,
@@ -4261,18 +4340,8 @@ static EMACS_UINT
 sxhash_float (double val)
 {
   EMACS_UINT hash = 0;
-  enum {
-    WORDS_PER_DOUBLE = (sizeof val / sizeof hash
-			+ (sizeof val % sizeof hash != 0))
-  };
-  union {
-    double val;
-    EMACS_UINT word[WORDS_PER_DOUBLE];
-  } u;
-  int i;
-  u.val = val;
-  memset (&u.val + 1, 0, sizeof u - sizeof u.val);
-  for (i = 0; i < WORDS_PER_DOUBLE; i++)
+  union double_and_words u = { .val = val };
+  for (int i = 0; i < WORDS_PER_DOUBLE; i++)
     hash = sxhash_combine (hash, u.word[i]);
   return SXHASH_REDUCE (hash);
 }
@@ -4829,8 +4898,6 @@ extract_data_from_object (Lisp_Object spec,
 
       record_unwind_current_buffer ();
 
-      CHECK_BUFFER (object);
-
       struct buffer *bp = XBUFFER (object);
       set_buffer_internal (bp);
 
@@ -4952,6 +5019,9 @@ extract_data_from_object (Lisp_Object spec,
 #endif
     }
 
+  if (!STRINGP (object))
+    signal_error ("Invalid object argument",
+		  NILP (object) ? build_string ("nil") : object);
   return SSDATA (object);
 }
 
@@ -5224,6 +5294,7 @@ this variable.  */);
   defsubr (&Slength);
   defsubr (&Ssafe_length);
   defsubr (&Sstring_bytes);
+  defsubr (&Sstring_distance);
   defsubr (&Sstring_equal);
   defsubr (&Scompare_strings);
   defsubr (&Sstring_lessp);

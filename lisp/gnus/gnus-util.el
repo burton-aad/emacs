@@ -1,6 +1,6 @@
 ;;; gnus-util.el --- utility functions for Gnus
 
-;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2018 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news
@@ -32,8 +32,7 @@
 
 ;;; Code:
 
-(eval-when-compile
-  (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 (require 'time-date)
 
@@ -142,7 +141,7 @@ This is a compatibility function for different Emacsen."
   "Extract address components from a From header.
 Given an RFC-822 address FROM, extract full name and canonical address.
 Returns a list of the form (FULL-NAME CANONICAL-ADDRESS).  Much more simple
-solution than `mail-extract-address-components', which works much better, but
+solution than `mail-header-parse-address', which works much better, but
 is slower."
   (let (name address)
     ;; First find the address - the thing with the @ in it.  This may
@@ -1117,41 +1116,9 @@ ARG is passed to the first function."
        (with-current-buffer gnus-group-buffer
 	 (eq major-mode 'gnus-group-mode))))
 
-(defun gnus-remove-if (predicate sequence &optional hash-table-p)
-  "Return a copy of SEQUENCE with all items satisfying PREDICATE removed.
-SEQUENCE should be a list, a vector, or a string.  Returns always a list.
-If HASH-TABLE-P is non-nil, regards SEQUENCE as a hash table."
-  (let (out)
-    (if hash-table-p
-	(mapatoms (lambda (symbol)
-		    (unless (funcall predicate symbol)
-		      (push symbol out)))
-		  sequence)
-      (unless (listp sequence)
-	(setq sequence (append sequence nil)))
-      (while sequence
-	(unless (funcall predicate (car sequence))
-	  (push (car sequence) out))
-	(setq sequence (cdr sequence))))
-    (nreverse out)))
+(define-obsolete-function-alias 'gnus-remove-if 'seq-remove "27.1")
 
-(defun gnus-remove-if-not (predicate sequence &optional hash-table-p)
-  "Return a copy of SEQUENCE with all items not satisfying PREDICATE removed.
-SEQUENCE should be a list, a vector, or a string.  Returns always a list.
-If HASH-TABLE-P is non-nil, regards SEQUENCE as a hash table."
-  (let (out)
-    (if hash-table-p
-	(mapatoms (lambda (symbol)
-		    (when (funcall predicate symbol)
-		      (push symbol out)))
-		  sequence)
-      (unless (listp sequence)
-	(setq sequence (append sequence nil)))
-      (while sequence
-	(when (funcall predicate (car sequence))
-	  (push (car sequence) out))
-	(setq sequence (cdr sequence))))
-    (nreverse out)))
+(define-obsolete-function-alias 'gnus-remove-if-not 'seq-filter "27.1")
 
 (defun gnus-grep-in-list (word list)
   "Find if a WORD matches any regular expression in the given LIST."
@@ -1440,7 +1407,7 @@ SPEC is a predicate specifier that contains stuff like `or', `and',
                                  (symbol-value history) collection))
                        filtered-choices)
                    (dolist (x choices)
-                     (setq filtered-choices (adjoin x filtered-choices)))
+                     (setq filtered-choices (cl-adjoin x filtered-choices)))
                    (nreverse filtered-choices))))))
     (unwind-protect
         (progn
@@ -1648,8 +1615,7 @@ empty directories from OLD-PATH."
   "Rescale IMAGE to SIZE if possible.
 SIZE is in format (WIDTH . HEIGHT). Return a new image.
 Sizes are in pixels."
-  (if (or (not (fboundp 'imagemagick-types))
-	  (not (get-buffer-window (current-buffer))))
+  (if (not (fboundp 'imagemagick-types))
       image
     (let ((new-width (car size))
           (new-height (cdr size)))

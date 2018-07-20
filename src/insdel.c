@@ -1,5 +1,5 @@
 /* Buffer insertion/deletion and gap motion for GNU Emacs. -*- coding: utf-8 -*-
-   Copyright (C) 1985-1986, 1993-1995, 1997-2017 Free Software
+   Copyright (C) 1985-1986, 1993-1995, 1997-2018 Free Software
    Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -2149,9 +2149,9 @@ signal_before_change (ptrdiff_t start_int, ptrdiff_t end_int,
     }
 
   if (! NILP (start_marker))
-    free_marker (start_marker);
+    detach_marker (start_marker);
   if (! NILP (end_marker))
-    free_marker (end_marker);
+    detach_marker (end_marker);
   RESTORE_VALUE;
 
   unbind_to (count, Qnil);
@@ -2342,7 +2342,10 @@ syms_of_insdel (void)
   DEFVAR_BOOL ("inhibit-modification-hooks", inhibit_modification_hooks,
 	       doc: /* Non-nil means don't run any of the hooks that respond to buffer changes.
 This affects `before-change-functions' and `after-change-functions',
-as well as hooks attached to text properties and overlays.  */);
+as well as hooks attached to text properties and overlays.
+Setting this variable non-nil also inhibits file locks and checks
+whether files are locked by another Emacs session, as well as
+handling of the active region per `select-active-regions'.  */);
   inhibit_modification_hooks = 0;
   DEFSYM (Qinhibit_modification_hooks, "inhibit-modification-hooks");
 

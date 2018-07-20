@@ -1,4 +1,4 @@
-# Copyright (C) 1992-1998, 2000-2017 Free Software Foundation, Inc.
+# Copyright (C) 1992-1998, 2000-2018 Free Software Foundation, Inc.
 #
 # This file is part of GNU Emacs.
 #
@@ -49,7 +49,7 @@ define xgetptr
   else
     set $bugfix = $arg0
   end
-  set $ptr = $bugfix & VALMASK
+  set $ptr = (EMACS_INT) $bugfix & VALMASK
 end
 
 define xgetint
@@ -58,7 +58,7 @@ define xgetint
   else
     set $bugfix = $arg0
   end
-  set $int = $bugfix << (USE_LSB_TAG ? 0 : INTTYPEBITS) >> INTTYPEBITS
+  set $int = (EMACS_INT) $bugfix << (USE_LSB_TAG ? 0 : INTTYPEBITS) >> INTTYPEBITS
 end
 
 define xgettype
@@ -67,7 +67,7 @@ define xgettype
   else
     set $bugfix = $arg0
   end
-  set $type = (enum Lisp_Type) (USE_LSB_TAG ? $bugfix & (1 << GCTYPEBITS) - 1 : (EMACS_UINT) $bugfix >> VALBITS)
+  set $type = (enum Lisp_Type) (USE_LSB_TAG ? (EMACS_INT) $bugfix & (1 << GCTYPEBITS) - 1 : (EMACS_UINT) $bugfix >> VALBITS)
 end
 
 define xgetsym
@@ -117,6 +117,12 @@ end
 document pv
 Print the value of the lisp variable given as argument.
 Works only when an inferior emacs is executing.
+end
+
+# Format the value and print it as a string. Works in
+# an rr session and during live debugging. Calls into lisp.
+define xfmt
+  printf "%s\n", debug_format("%S", $arg0)
 end
 
 # Print out current buffer point and boundaries
@@ -564,7 +570,7 @@ define pgi
 end
 document pgi
 Pretty print glyph structure glyph[I].
-Takes one argument, a integer I.
+Takes one argument, an integer I.
 end
 
 define pgn
@@ -819,6 +825,7 @@ define xcompiled
   xgetptr $
   print (struct Lisp_Vector *) $ptr
   output ($->contents[0])@($->header.size & 0xff)
+  echo \n
 end
 document xcompiled
 Print $ as a compiled function pointer.
@@ -1019,9 +1026,6 @@ define xpr
     if $misc == Lisp_Misc_Overlay
       xoverlay
     end
-#    if $misc == Lisp_Misc_Save_Value
-#      xsavevalue
-#    end
   end
   if $type == Lisp_Vectorlike
     set $size = ((struct Lisp_Vector *) $ptr)->header.size
@@ -1270,6 +1274,12 @@ end
 
 python
 
+# Python 3 compatibility.
+try:
+  long
+except:
+  long = int
+
 # Omit pretty-printing in older (pre-7.3) GDBs that lack it.
 if hasattr(gdb, 'printing'):
 
@@ -1306,13 +1316,13 @@ if hasattr(gdb, 'printing'):
       # symbol table, guess reasonable defaults.
       sym = gdb.lookup_symbol ("EMACS_INT_WIDTH")[0]
       if sym:
-        EMACS_INT_WIDTH = int (sym.value ())
+        EMACS_INT_WIDTH = long (sym.value ())
       else:
         sym = gdb.lookup_symbol ("EMACS_INT")[0]
         EMACS_INT_WIDTH = 8 * sym.type.sizeof
       sym = gdb.lookup_symbol ("USE_LSB_TAG")[0]
       if sym:
-        USE_LSB_TAG = int (sym.value ())
+        USE_LSB_TAG = long (sym.value ())
       else:
         USE_LSB_TAG = 1
 
@@ -1321,19 +1331,26 @@ if hasattr(gdb, 'printing'):
       Lisp_Int0 = 2
       Lisp_Int1 = 6 if USE_LSB_TAG else 3
 
-      # Unpack the Lisp value from its containing structure, if necessary.
       val = self.val
       basic_type = gdb.types.get_basic_type (val.type)
+
+      # Unpack VAL from its containing structure, if necessary.
       if (basic_type.code == gdb.TYPE_CODE_STRUCT
           and gdb.types.has_field (basic_type, "i")):
         val = val["i"]
 
+      # Convert VAL to a Python integer.  Convert by hand, as this is
+      # simpler and works regardless of whether VAL is a pointer or
+      # integer.  Also, val.cast (gdb.lookup.type ("EMACS_UINT"))
+      # would have problems with GDB 7.12.1; see
+      # <http://patchwork.sourceware.org/patch/11557/>.
+      ival = long (val)
+
       # For nil, yield "XIL(0)", which is easier to read than "XIL(0x0)".
-      if not val:
+      if not ival:
         return "XIL(0)"
 
       # Extract the integer representation of the value and its Lisp type.
-      ival = int(val)
       itype = ival >> (0 if USE_LSB_TAG else VALBITS)
       itype = itype & ((1 << GCTYPEBITS) - 1)
 
@@ -1341,7 +1358,7 @@ if hasattr(gdb, 'printing'):
       if itype == Lisp_Int0 or itype == Lisp_Int1:
         if USE_LSB_TAG:
           ival = ival >> (GCTYPEBITS - 1)
-        elif (ival >> VALBITS) & 1:
+        if (ival >> VALBITS) & 1:
           ival = ival | (-1 << VALBITS)
         else:
           ival = ival & ((1 << VALBITS) - 1)
@@ -1352,8 +1369,7 @@ if hasattr(gdb, 'printing'):
       # integers even when Lisp_Object is an integer.
       # Perhaps some day the pretty-printing could be fancier.
       # Prefer the unsigned representation to negative values, converting
-      # by hand as val.cast(gdb.lookup_type("EMACS_UINT") does not work in
-      # GDB 7.12.1; see <http://patchwork.sourceware.org/patch/11557/>.
+      # by hand as val.cast does not work in GDB 7.12.1 as noted above.
       if ival < 0:
         ival = ival + (1 << EMACS_INT_WIDTH)
       return "XIL(0x%x)" % ival

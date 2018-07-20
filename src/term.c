@@ -1,5 +1,5 @@
 /* Terminal control module for terminals described by TERMCAP
-   Copyright (C) 1985-1987, 1993-1995, 1998, 2000-2017 Free Software
+   Copyright (C) 1985-1987, 1993-1995, 1998, 2000-2018 Free Software
    Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -1591,13 +1591,13 @@ produce_glyphs (struct it *it)
 			+ it->continuation_lines_width);
       int x0 = absolute_x;
       /* Adjust for line numbers.  */
-      if (!NILP (Vdisplay_line_numbers))
+      if (!NILP (Vdisplay_line_numbers) && it->line_number_produced_p)
 	absolute_x -= it->lnum_pixel_width;
       int next_tab_x
 	= (((1 + absolute_x + it->tab_width - 1)
 	    / it->tab_width)
 	   * it->tab_width);
-      if (!NILP (Vdisplay_line_numbers))
+      if (!NILP (Vdisplay_line_numbers) && it->line_number_produced_p)
 	next_tab_x += it->lnum_pixel_width;
       int nspaces;
 
@@ -2721,7 +2721,7 @@ typedef struct tty_menu_struct
 
 /* Create a brand new menu structure.  */
 
-static tty_menu *
+static tty_menu * ATTRIBUTE_MALLOC
 tty_menu_create (void)
 {
   return xzalloc (sizeof *tty_menu_create ());
@@ -3132,15 +3132,15 @@ tty_menu_activate (tty_menu *menu, int *pane, int *selidx,
   SAFE_NALLOCA (state, 1, menu->panecount);
   memset (state, 0, sizeof (*state));
   faces[0]
-    = lookup_derived_face (sf, intern ("tty-menu-disabled-face"),
+    = lookup_derived_face (NULL, sf, intern ("tty-menu-disabled-face"),
 			   DEFAULT_FACE_ID, 1);
   faces[1]
-    = lookup_derived_face (sf, intern ("tty-menu-enabled-face"),
+    = lookup_derived_face (NULL, sf, intern ("tty-menu-enabled-face"),
 			   DEFAULT_FACE_ID, 1);
   selectface = intern ("tty-menu-selected-face");
-  faces[2] = lookup_derived_face (sf, selectface,
+  faces[2] = lookup_derived_face (NULL, sf, selectface,
 				  faces[0], 1);
-  faces[3] = lookup_derived_face (sf, selectface,
+  faces[3] = lookup_derived_face (NULL, sf, selectface,
 				  faces[1], 1);
 
   /* Make sure the menu title is always displayed with
@@ -3408,15 +3408,20 @@ tty_menu_help_callback (char const *help_string, int pane, int item)
  		  Qnil, menu_object, make_number (item));
 }
 
-static void
-tty_pop_down_menu (Lisp_Object arg)
+struct tty_pop_down_menu
 {
-  tty_menu *menu = XSAVE_POINTER (arg, 0);
-  struct buffer *orig_buffer = XSAVE_POINTER (arg, 1);
+  tty_menu *menu;
+  struct buffer *buffer;
+};
+
+static void
+tty_pop_down_menu (void *arg)
+{
+  struct tty_pop_down_menu *data = arg;
 
   block_input ();
-  tty_menu_destroy (menu);
-  set_buffer_internal (orig_buffer);
+  tty_menu_destroy (data->menu);
+  set_buffer_internal (data->buffer);
   unblock_input ();
 }
 
@@ -3697,8 +3702,9 @@ tty_menu_show (struct frame *f, int x, int y, int menuflags,
 
   /* We save and restore the current buffer because tty_menu_activate
      triggers redisplay, which switches buffers at will.  */
-  record_unwind_protect (tty_pop_down_menu,
-			 make_save_ptr_ptr (menu, current_buffer));
+  record_unwind_protect_ptr (tty_pop_down_menu,
+			     &((struct tty_pop_down_menu)
+			       {menu, current_buffer}));
 
   specbind (Qoverriding_terminal_local_map,
 	    Fsymbol_value (Qtty_menu_navigation_map));
@@ -3770,9 +3776,7 @@ tty_menu_show (struct frame *f, int x, int y, int menuflags,
 
  tty_menu_end:
 
-  SAFE_FREE ();
-  unbind_to (specpdl_count, Qnil);
-  return entry;
+  return SAFE_FREE_UNBIND_TO (specpdl_count, entry);
 }
 
 #endif	/* !MSDOS */
@@ -4144,16 +4148,24 @@ use the Bourne shell command 'TERM=...; export TERM' (C-shell:\n\
       tty->TN_max_colors = tgetnum ("Co");
 
 #ifdef TERMINFO
-      /* Non-standard support for 24-bit colors. */
       {
 	const char *fg = tigetstr ("setf24");
 	const char *bg = tigetstr ("setb24");
+	/* Non-standard support for 24-bit colors. */
 	if (fg && bg
 	    && fg != (char *) (intptr_t) -1
 	    && bg != (char *) (intptr_t) -1)
 	  {
 	    tty->TS_set_foreground = fg;
 	    tty->TS_set_background = bg;
+	    tty->TN_max_colors = 16777216;
+	  }
+	/* Standard support for 24-bit colors.  */
+	else if (tigetflag ("RGB") > 0)
+	  {
+	    /* If the used Terminfo library supports only 16-bit
+	       signed values, tgetnum("Co") and tigetnum("colors")
+	       could return 32767.  */
 	    tty->TN_max_colors = 16777216;
 	  }
       }

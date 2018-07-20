@@ -1,6 +1,6 @@
 ;;; image-mode.el --- support for visiting image files  -*- lexical-binding: t -*-
 ;;
-;; Copyright (C) 2005-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2005-2018 Free Software Foundation, Inc.
 ;;
 ;; Author: Richard Stallman <rms@gnu.org>
 ;; Keywords: multimedia
@@ -412,9 +412,6 @@ call."
 (defvar-local image-multi-frame nil
   "Non-nil if image for the current Image mode buffer has multiple frames.")
 
-(defvar image-mode-previous-major-mode nil
-  "Internal variable to keep the previous non-image major mode.")
-
 (defvar image-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" 'image-toggle-display)
@@ -551,7 +548,7 @@ Key bindings:
 	(unless (display-images-p)
 	  (error "Display does not support images"))
 
-	(kill-all-local-variables)
+        (major-mode-suspend)
 	(setq major-mode 'image-mode)
 
 	(if (not (image-get-display-property))
@@ -620,9 +617,6 @@ mouse-3: Previous frame"
 ;;;###autoload
 (define-minor-mode image-minor-mode
   "Toggle Image minor mode in this buffer.
-With a prefix argument ARG, enable Image minor mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 Image minor mode provides the key \\<image-mode-map>\\[image-toggle-display],
 to switch back to `image-mode' and display an image file as the
@@ -641,26 +635,7 @@ A non-mage major mode found from `auto-mode-alist' or fundamental mode
 displays an image file as text."
   ;; image-mode-as-text = normal-mode + image-minor-mode
   (let ((previous-image-type image-type)) ; preserve `image-type'
-    (if image-mode-previous-major-mode
-	;; Restore previous major mode that was already found by this
-	;; function and cached in `image-mode-previous-major-mode'
-	(funcall image-mode-previous-major-mode)
-      (let ((auto-mode-alist
-	     (delq nil (mapcar
-			(lambda (elt)
-			  (unless (memq (or (car-safe (cdr elt)) (cdr elt))
-					'(image-mode image-mode-maybe image-mode-as-text))
-			    elt))
-			auto-mode-alist)))
-	    (magic-fallback-mode-alist
-	     (delq nil (mapcar
-			(lambda (elt)
-			  (unless (memq (or (car-safe (cdr elt)) (cdr elt))
-					'(image-mode image-mode-maybe image-mode-as-text))
-			    elt))
-			magic-fallback-mode-alist))))
-	(normal-mode)
-	(setq-local image-mode-previous-major-mode major-mode)))
+    (major-mode-restore '(image-mode image-mode-maybe image-mode-as-text))
     ;; Restore `image-type' after `kill-all-local-variables' in `normal-mode'.
     (setq image-type previous-image-type)
     ;; Enable image minor mode with `C-c C-c'.
@@ -676,7 +651,7 @@ displays an image file as hex.  `image-minor-mode' provides the key
 to display an image file as the actual image.
 
 You can use `image-mode-as-hex' in `auto-mode-alist' when you want to
-to display an image file as hex initially.
+display an image file as hex initially.
 
 See commands `image-mode' and `image-minor-mode' for more information
 on these modes."
@@ -758,7 +733,7 @@ was inserted."
 	 (edges (and (null image-transform-resize)
 		     (window-inside-pixel-edges
 		      (get-buffer-window (current-buffer)))))
-	 (type (if (fboundp 'imagemagick-types)
+	 (type (if (image--imagemagick-wanted-p filename)
 		   'imagemagick
 		 (image-type file-or-data nil data-p)))
 	 (image (if (not edges)
@@ -780,7 +755,7 @@ was inserted."
 		    rear-nonsticky (display) ;; intangible
 		    read-only t front-sticky (read-only)))
 
-    (let ((buffer-file-truename nil)) ; avoid changing dir mtime by lock_file
+    (let ((create-lockfiles nil)) ; avoid changing dir mtime by lock_file
       (add-text-properties (point-min) (point-max) props)
       (restore-buffer-modified-p modified))
     ;; Inhibit the cursor when the buffer contains only an image,
@@ -802,6 +777,12 @@ was inserted."
     (image-transform-check-size)
     (if (called-interactively-p 'any)
 	(message "Repeat this command to go back to displaying the file as text"))))
+
+(defun image--imagemagick-wanted-p (filename)
+  (and (fboundp 'imagemagick-types)
+       (not (eq imagemagick-types-inhibit t))
+       (not (memq (intern (upcase (file-name-extension filename)) obarray)
+                  imagemagick-types-inhibit))))
 
 (defun image-toggle-hex-display ()
   "Toggle between image and hex display."

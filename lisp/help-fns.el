@@ -1,6 +1,6 @@
 ;;; help-fns.el --- Complex help functions -*- lexical-binding: t -*-
 
-;; Copyright (C) 1985-1986, 1993-1994, 1998-2017 Free Software
+;; Copyright (C) 1985-1986, 1993-1994, 1998-2018 Free Software
 ;; Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -181,8 +181,8 @@ KIND should be `var' for a variable or `subr' for a subroutine."
 	   (expand-file-name internal-doc-file-name doc-directory)))
       (let ((file (catch 'loop
 		    (while t
-		      (let ((pnt (search-forward (concat "" name "\n"))))
-			(re-search-backward "S\\(.*\\)")
+		      (let ((pnt (search-forward (concat "\^_" name "\n"))))
+			(re-search-backward "\^_S\\(.*\\)")
 			(let ((file (match-string 1)))
 			  (if (member file build-files)
 			      (throw 'loop file)
@@ -642,6 +642,8 @@ Returns a list of the form (REAL-FUNCTION DEF ALIASED REAL-DEF)."
 		  (concat beg "Lisp macro"))
 		 ((byte-code-function-p def)
 		  (concat beg "compiled Lisp function"))
+                 ((module-function-p def)
+                  (concat beg "module function"))
 		 ((eq (car-safe def) 'lambda)
 		  (concat beg "Lisp function"))
 		 ((eq (car-safe def) 'closure)
@@ -1291,7 +1293,7 @@ BUFFER should be a buffer or a buffer name."
           ".AU Richard M. Stallman\n")
   (insert-file-contents file)
   (let (notfirst)
-    (while (search-forward "" nil 'move)
+    (while (search-forward "\^_" nil 'move)
       (if (= (following-char) ?S)
           (delete-region (1- (point)) (line-end-position))
         (delete-char -1)
@@ -1324,12 +1326,12 @@ BUFFER should be a buffer or a buffer name."
         (insert "@")
         (forward-char 1))
       (goto-char (point-min))
-      (while (search-forward "" nil t)
+      (while (search-forward "\^_" nil t)
         (when (/= (following-char) ?S)
           (setq type (char-after)
                 name (buffer-substring (1+ (point)) (line-end-position))
                 doc (buffer-substring (line-beginning-position 2)
-                                      (if (search-forward  "" nil 'move)
+                                      (if (search-forward  "\^_" nil 'move)
                                           (1- (point))
                                         (point)))
                 alist (cons (list name type doc) alist))

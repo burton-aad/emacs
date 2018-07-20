@@ -57,7 +57,8 @@ INLINE_HEADER_BEGIN
 
 /* Minimum leading code of multibyte characters.  */
 #define MIN_MULTIBYTE_LEADING_CODE 0xC0
-/* Maximum leading code of multibyte characters.  */
+/* Maximum leading code of multibyte characters.  Note: this must be
+   updated if we ever increase MAX_CHAR above.  */
 #define MAX_MULTIBYTE_LEADING_CODE 0xF8
 
 /* Unicode character values.  */
@@ -682,6 +683,8 @@ extern bool graphicp (int);
 extern bool printablep (int);
 extern bool blankp (int);
 
+extern bool confusable_symbol_character_p (int ch);
+
 /* Return a translation table of id number ID.  */
 #define GET_TRANSLATION_TABLE(id) \
   (XCDR (XVECTOR (Vtranslation_table_vector)->contents[(id)]))
@@ -693,7 +696,7 @@ INLINE int
 char_table_translate (Lisp_Object obj, int ch)
 {
   /* This internal function is expected to be called with valid arguments,
-     so there is a eassert instead of CHECK_xxx for the sake of speed.  */
+     so there is an eassert instead of CHECK_xxx for the sake of speed.  */
   eassert (CHAR_VALID_P (ch));
   eassert (CHAR_TABLE_P (obj));
   obj = CHAR_TABLE_REF (obj, ch);

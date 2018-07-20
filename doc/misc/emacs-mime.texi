@@ -12,7 +12,7 @@
 @copying
 This file documents the Emacs MIME interface functionality.
 
-Copyright @copyright{} 1998--2017 Free Software Foundation, Inc.
+Copyright @copyright{} 1998--2018 Free Software Foundation, Inc.
 
 @quotation
 Permission is granted to copy, distribute and/or modify this document
@@ -179,18 +179,18 @@ Emacs source code.  This item works only in the groups matching
 @code{mm-uu-emacs-sources-regexp}.
 
 @item diff
-@vindex diff
+@findex diff
 @vindex mm-uu-diff-groups-regexp
 Patches.  This is intended for groups where diffs of committed files
 are automatically sent to.  It only works in groups matching
 @code{mm-uu-diff-groups-regexp}.
 
 @item verbatim-marks
-@cindex verbatim-marks
+@findex verbatim-marks
 Slrn-style verbatim marks.
 
 @item LaTeX
-@cindex LaTeX
+@findex LaTeX
 LaTeX documents.  It only works in groups matching
 @code{mm-uu-tex-groups-regexp}.
 
@@ -404,12 +404,12 @@ variable will cause @samp{text/html} parts to be treated as attachments.
 
 @item mm-text-html-renderer
 @vindex mm-text-html-renderer
-This selects the function used to render @acronym{HTML}.  The predefined
-renderers are selected by the symbols @code{shr}, @code{gnus-w3m},
-@code{w3m}@footnote{See @uref{http://emacs-w3m.namazu.org/} for more
-information about emacs-w3m}, @code{links}, @code{lynx},
-@code{w3m-standalone} or @code{html2text}.  If @code{nil} use an
-external viewer.  You can also specify a function, which will be
+This selects the function used to render @acronym{HTML}.  The
+predefined renderers are selected by the symbols @code{shr},
+@code{gnus-w3m}, @code{w3m}@footnote{See
+@uref{http://emacs-w3m.namazu.org/} for more information about
+emacs-w3m}, @code{links}, @code{lynx}, @code{w3m-standalone} or
+@code{html2text}.  You can also specify a function, which will be
 called with a @acronym{MIME} handle as the argument.
 
 @item mm-html-inhibit-images
@@ -708,7 +708,7 @@ RFC822 date when the part was read (@code{Content-Disposition}).
 
 @item recipients
 Who to encrypt/sign the part to.  This field is used to override any
-auto-detection based on the To/CC headers.
+auto-detection based on the To/Cc headers.
 
 @item sender
 Identity used to sign the part.  This field is used to override the
@@ -1093,7 +1093,7 @@ If non-@code{nil} a format=flowed article will be displayed flowed.
 @node Interface Functions
 @chapter Interface Functions
 @cindex interface functions
-@cindex mail-parse
+@cindex @code{mail-parse}
 
 The @code{mail-parse} library is an abstraction over the actual
 low-level libraries that are described in the next chapter.
@@ -1845,10 +1845,22 @@ Interface functions:
 @table @code
 @item mailcap-parse-mailcaps
 @findex mailcap-parse-mailcaps
+@vindex mailcap-prefer-mailcap-viewers
 Parse the @file{~/.mailcap} file.
 
 @item mailcap-mime-info
 Takes a @acronym{MIME} type as its argument and returns the matching viewer.
+
+The @code{mailcap-prefer-mailcap-viewers} variable controls which
+viewer is chosen.  The default non-@code{nil} value means that
+settings from @file{~/.mailcap} is preferred over system-wide or
+Emacs-provided viewer settings.
+
+If @code{nil}, Emacs-provided viewer settings have precedence.  Next,
+the most specific viewer has precedence over less specific settings,
+no matter if they're system-provided or private, so @samp{image/gif}
+in @file{/etc/mailcap} will ``win'' over an @samp{image/*} setting in
+@file{~/.mailcap}.
 
 @end table
 

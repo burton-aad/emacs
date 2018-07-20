@@ -1,6 +1,6 @@
 ;;; octave.el --- editing octave source files under emacs  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 1997, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1997, 2001-2018 Free Software Foundation, Inc.
 
 ;; Author: Kurt Hornik <Kurt.Hornik@wu-wien.ac.at>
 ;;	   John Eaton <jwe@octave.org>
@@ -639,6 +639,9 @@ mode, include \"-q\" and \"--traditional\"."
   :type '(repeat string)
   :version "24.4")
 
+(define-obsolete-variable-alias 'inferior-octave-startup-hook
+  'inferior-octave-mode-hook "24.4")
+
 (defcustom inferior-octave-mode-hook nil
   "Hook to be run when Inferior Octave mode is started."
   :type 'hook)
@@ -692,9 +695,6 @@ mode, include \"-q\" and \"--traditional\"."
 (defvar inferior-octave-output-list nil)
 (defvar inferior-octave-output-string nil)
 (defvar inferior-octave-receive-in-progress nil)
-
-(define-obsolete-variable-alias 'inferior-octave-startup-hook
-  'inferior-octave-mode-hook "24.4")
 
 (defvar inferior-octave-dynamic-complete-functions
   '(inferior-octave-completion-at-point comint-filename-completion)
@@ -1165,6 +1165,8 @@ q: Don't fix\n" func file))
   "Face used to highlight function comment block.")
 
 (eval-when-compile (require 'texinfo))
+;; Undo the effects of texinfo loading tex-mode loading compile.
+(declare-function compilation-forget-errors "compile" ())
 
 (defun octave-font-lock-texinfo-comment ()
   (let ((kws

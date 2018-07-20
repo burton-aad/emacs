@@ -1,6 +1,6 @@
 @c -*-texinfo-*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998-1999, 2001-2017 Free Software
+@c Copyright (C) 1990-1995, 1998-1999, 2001-2018 Free Software
 @c Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node Processes
@@ -176,6 +176,14 @@ ensure that your @env{PATH} environment variable is set appropriately
 before starting Emacs.  Trying to modify @code{exec-path}
 independently of @env{PATH} can lead to confusing results.
 @end defopt
+
+@defun exec-path
+This function is an extension of the variable @code{exec-path}.  If
+@code{default-directory} indicates a remote directory, this function
+returns a list of directories used for searching programs on the
+respective remote host.  In case of a local @code{default-directory},
+the function returns just the value of the variable @code{exec-path}.
+@end defun
 
 @node Shell Arguments
 @section Shell Arguments
@@ -681,7 +689,9 @@ a default sentinel will be used, which can be overridden later.
 @item :stderr @var{stderr}
 Associate @var{stderr} with the standard error of the process.  A
 non-@code{nil} value should be either a buffer or a pipe process
-created with @code{make-pipe-process}, described below.
+created with @code{make-pipe-process}, described below.  If
+@var{stderr} is @code{nil}, standard error is mixed with standard
+output, and both are sent to @var{buffer} or @var{filter}.
 @end table
 
 The original argument list, modified with the actual connection
@@ -728,8 +738,11 @@ Initialize the process query flag to @var{query-flag}.
 @xref{Query Before Exit}.
 
 @item :stop @var{stopped}
-If @var{stopped} is non-@code{nil}, start the process in the
-stopped state.
+If @var{stopped} is non-@code{nil}, start the process in the stopped
+state.  In the stopped state, a pipe process does not accept incoming
+data, but you can send outgoing data.  The stopped state is set by
+@code{stop-process} and cleared by @code{continue-process}
+(@pxref{Signals to Processes}).
 
 @item :filter @var{filter}
 Initialize the process filter to @var{filter}.  If not specified, a
@@ -2712,8 +2725,7 @@ Initialize the process filter to @var{filter}.
 
 @item :filter-multibyte @var{multibyte}
 If @var{multibyte} is non-@code{nil}, strings given to the process
-filter are multibyte, otherwise they are unibyte.  The default is the
-default value of @code{enable-multibyte-characters}.
+filter are multibyte, otherwise they are unibyte.  The default is @code{t}.
 
 @item :sentinel @var{sentinel}
 Initialize the process sentinel to @var{sentinel}.

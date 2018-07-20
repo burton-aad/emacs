@@ -1,6 +1,6 @@
 ;;; esh-mode.el --- user interface  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1999-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2018 Free Software Foundation, Inc.
 
 ;; Author: John Wiegley <johnw@gnu.org>
 
@@ -884,8 +884,7 @@ If SCROLLBACK is non-nil, clear the scrollback contents."
   (interactive)
   (if scrollback
       (eshell/clear-scrollback)
-    (let ((eshell-input-filter-functions
-           (remq 'eshell-add-to-history eshell-input-filter-functions)))
+    (let ((eshell-input-filter-functions nil))
       (insert (make-string (window-size) ?\n))
       (eshell-send-input))))
 

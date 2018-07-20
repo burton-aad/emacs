@@ -1,6 +1,6 @@
 ;;; rcirc.el --- default, simple IRC client          -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2005-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2005-2018 Free Software Foundation, Inc.
 
 ;; Author: Ryan Yeske <rcyeske@gmail.com>
 ;; Maintainers: Ryan Yeske <rcyeske@gmail.com>,
@@ -182,11 +182,10 @@ underneath each nick."
   :type '(repeat string)
   :group 'rcirc)
 
+(defvar rcirc-prompt-start-marker nil)
+
 (define-minor-mode rcirc-omit-mode
   "Toggle the hiding of \"uninteresting\" lines.
-With a prefix argument ARG, enable Rcirc-Omit mode if ARG is
-positive, and disable it otherwise. If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 Uninteresting lines are those whose responses are listed in
 `rcirc-omit-responses'."
@@ -401,7 +400,6 @@ will be killed."
 
 (defvar rcirc-nick nil)
 
-(defvar rcirc-prompt-start-marker nil)
 (defvar rcirc-prompt-end-marker nil)
 
 (defvar rcirc-nick-table nil)
@@ -585,7 +583,7 @@ If ARG is non-nil, instead prompt for connection parameters."
 
       (setq-local rcirc-connection-info
 		  (list server port nick user-name full-name startup-channels
-			password encryption))
+			password encryption server-alias))
       (setq-local rcirc-process process)
       (setq-local rcirc-server server)
       (setq-local rcirc-server-name
@@ -1352,10 +1350,7 @@ Create the buffer if it doesn't exist."
   "Keymap for multiline mode in rcirc.")
 
 (define-minor-mode rcirc-multiline-minor-mode
-  "Minor mode for editing multiple lines in rcirc.
-With a prefix argument ARG, enable the mode if ARG is positive,
-and disable it otherwise.  If called from Lisp, enable the mode
-if ARG is omitted or nil."
+  "Minor mode for editing multiple lines in rcirc."
   :init-value nil
   :lighter " rcirc-mline"
   :keymap rcirc-multiline-minor-mode-map
@@ -1866,10 +1861,7 @@ This function does not alter the INPUT string."
 
 ;;;###autoload
 (define-minor-mode rcirc-track-minor-mode
-  "Global minor mode for tracking activity in rcirc buffers.
-With a prefix argument ARG, enable the mode if ARG is positive,
-and disable it otherwise.  If called from Lisp, enable the mode
-if ARG is omitted or nil."
+  "Global minor mode for tracking activity in rcirc buffers."
   :init-value nil
   :lighter ""
   :keymap rcirc-track-minor-mode-map

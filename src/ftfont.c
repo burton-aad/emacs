@@ -1,5 +1,5 @@
 /* ftfont.c -- FreeType font driver.
-   Copyright (C) 2006-2017 Free Software Foundation, Inc.
+   Copyright (C) 2006-2018 Free Software Foundation, Inc.
    Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
      National Institute of Advanced Industrial Science and Technology (AIST)
      Registration Number H13PRO009
@@ -345,6 +345,7 @@ struct ftfont_cache_data
 {
   FT_Face ft_face;
   FcCharSet *fc_charset;
+  intptr_t face_refcount;
 };
 
 static Lisp_Object
@@ -371,17 +372,15 @@ ftfont_lookup_cache (Lisp_Object key, enum ftfont_cache_for cache_for)
     {
       if (NILP (ft_face_cache))
 	ft_face_cache = CALLN (Fmake_hash_table, QCtest, Qequal);
-      cache_data = xmalloc (sizeof *cache_data);
-      cache_data->ft_face = NULL;
-      cache_data->fc_charset = NULL;
-      val = make_save_ptr_int (cache_data, 0);
+      cache_data = xzalloc (sizeof *cache_data);
+      val = make_mint_ptr (cache_data);
       cache = Fcons (Qnil, val);
       Fputhash (key, cache, ft_face_cache);
     }
   else
     {
       val = XCDR (cache);
-      cache_data = XSAVE_POINTER (val, 0);
+      cache_data = xmint_pointer (val);
     }
 
   if (cache_for == FTFONT_CACHE_FOR_ENTITY)
@@ -447,7 +446,7 @@ ftfont_get_fc_charset (Lisp_Object entity)
 
   cache = ftfont_lookup_cache (entity, FTFONT_CACHE_FOR_CHARSET);
   val = XCDR (cache);
-  cache_data = XSAVE_POINTER (val, 0);
+  cache_data = xmint_pointer (val);
   return cache_data->fc_charset;
 }
 
@@ -764,6 +763,13 @@ ftfont_spec_pattern (Lisp_Object spec, char *otlayout, struct OpenTypeSpec **ots
   if (scalable >= 0
       && ! FcPatternAddBool (pattern, FC_SCALABLE, scalable ? FcTrue : FcFalse))
     goto err;
+#if defined HAVE_XFT && defined FC_COLOR
+  /* We really don't like color fonts, they cause Xft crashes.  See
+     Bug#30874.  */
+  if (Vxft_ignore_color_fonts
+      && ! FcPatternAddBool (pattern, FC_COLOR, FcFalse))
+    goto err;
+#endif
 
   goto finish;
 
@@ -1111,9 +1117,9 @@ ftfont_open2 (struct frame *f,
   filename = XCAR (val);
   idx = XCDR (val);
   val = XCDR (cache);
-  cache_data = XSAVE_POINTER (XCDR (cache), 0);
+  cache_data = xmint_pointer (XCDR (cache));
   ft_face = cache_data->ft_face;
-  if (XSAVE_INTEGER (val, 1) > 0)
+  if (cache_data->face_refcount > 0)
     {
       /* FT_Face in this cache is already used by the different size.  */
       if (FT_New_Size (ft_face, &ft_size) != 0)
@@ -1124,16 +1130,19 @@ ftfont_open2 (struct frame *f,
 	  return Qnil;
 	}
     }
-  set_save_integer (val, 1, XSAVE_INTEGER (val, 1) + 1);
   size = XINT (AREF (entity, FONT_SIZE_INDEX));
   if (size == 0)
     size = pixel_size;
   if (FT_Set_Pixel_Sizes (ft_face, size, size) != 0)
     {
-      if (XSAVE_INTEGER (val, 1) == 0)
-	FT_Done_Face (ft_face);
+      if (cache_data->face_refcount == 0)
+	{
+	  FT_Done_Face (ft_face);
+	  cache_data->ft_face = NULL;
+	}
       return Qnil;
     }
+  cache_data->face_refcount++;
 
   ASET (font_object, FONT_FILE_INDEX, filename);
   font = XFONT_OBJECT (font_object);
@@ -1235,9 +1244,8 @@ ftfont_open (struct frame *f, Lisp_Object entity, int pixel_size)
 void
 ftfont_close (struct font *font)
 {
-  /* FIXME: Although this function can be called while garbage-collecting,
-     the function assumes that Lisp data structures are properly-formed.
-     This invalid assumption can lead to core dumps (Bug#20890).  */
+  if (font_data_structures_may_be_ill_formed ())
+    return;
 
   struct ftfont_info *ftfont_info = (struct ftfont_info *) font;
   Lisp_Object val, cache;
@@ -1246,11 +1254,10 @@ ftfont_close (struct font *font)
   cache = ftfont_lookup_cache (val, FTFONT_CACHE_FOR_FACE);
   eassert (CONSP (cache));
   val = XCDR (cache);
-  set_save_integer (val, 1, XSAVE_INTEGER (val, 1) - 1);
-  if (XSAVE_INTEGER (val, 1) == 0)
+  struct ftfont_cache_data *cache_data = xmint_pointer (val);
+  cache_data->face_refcount--;
+  if (cache_data->face_refcount == 0)
     {
-      struct ftfont_cache_data *cache_data = XSAVE_POINTER (val, 0);
-
       FT_Done_Face (cache_data->ft_face);
 #ifdef HAVE_LIBOTF
       if (ftfont_info->otf)

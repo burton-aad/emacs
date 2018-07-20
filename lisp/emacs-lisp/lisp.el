@@ -1,6 +1,6 @@
 ;;; lisp.el --- Lisp editing commands for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-1986, 1994, 2000-2017 Free Software Foundation,
+;; Copyright (C) 1985-1986, 1994, 2000-2018 Free Software Foundation,
 ;; Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -339,12 +339,18 @@ is called as a function to find the defun's beginning."
 
    ((or defun-prompt-regexp open-paren-in-column-0-is-defun-start)
     (and (< arg 0) (not (eobp)) (forward-char 1))
-    (and (re-search-backward (if defun-prompt-regexp
-				 (concat (if open-paren-in-column-0-is-defun-start
-					     "^\\s(\\|" "")
-					 "\\(?:" defun-prompt-regexp "\\)\\s(")
-			       "^\\s(")
-			     nil 'move arg)
+    (and (let (found)
+           (while
+               (and (setq found
+                          (re-search-backward
+                           (if defun-prompt-regexp
+			       (concat (if open-paren-in-column-0-is-defun-start
+					   "^\\s(\\|" "")
+				       "\\(?:" defun-prompt-regexp "\\)\\s(")
+			     "^\\s(")
+			                      nil 'move arg))
+                    (nth 8 (syntax-ppss))))
+           found)
 	 (progn (goto-char (1- (match-end 0)))
                 t)))
 
@@ -405,12 +411,13 @@ whitespace."
 ;; See https://lists.gnu.org/r/help-gnu-emacs/2016-08/msg00141.html
   (save-excursion
     (forward-line 0)
-    (< (line-end-position)
-       (let ((ppss (syntax-ppss)))
-         (when (nth 4 ppss)
-           (goto-char (nth 8 ppss)))
-         (forward-comment (point-max))
-         (point)))))
+    (let ((ppss (syntax-ppss)))
+      (and (null (nth 3 ppss))
+           (< (line-end-position)
+              (progn (when (nth 4 ppss)
+                       (goto-char (nth 8 ppss)))
+                     (forward-comment (point-max))
+                     (point)))))))
 
 (defun beginning-of-defun-comments (&optional arg)
   "Move to the beginning of ARGth defun, including comments."
@@ -428,10 +435,7 @@ whitespace."
                   (progn (skip-syntax-backward
                           "-" (line-beginning-position))
                          (not (bolp))) ; Check for blank line.
-                  (progn (parse-partial-sexp
-                          (line-beginning-position) (line-end-position)
-                          nil t (syntax-ppss (line-beginning-position)))
-                         (eolp))))) ; Check for non-comment text.
+                  (beginning-of-defun--in-emptyish-line-p)))) ; Check for non-comment text.
     (forward-line (if first-line-p 0 1))))
 
 (defvar end-of-defun-function

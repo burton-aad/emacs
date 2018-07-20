@@ -1,5 +1,5 @@
 /* Definitions for asynchronous process control in GNU Emacs.
-   Copyright (C) 1985, 1994, 2001-2017 Free Software Foundation, Inc.
+   Copyright (C) 1985, 1994, 2001-2018 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -129,6 +129,8 @@ struct Lisp_Process
     pid_t pid;
     /* Descriptor by which we read from this process.  */
     int infd;
+    /* Byte-count modulo (UINTMAX_MAX + 1) for process output read from `infd'.  */
+    uintmax_t nbytes_read;
     /* Descriptor by which we write to this process.  */
     int outfd;
     /* Descriptors that were created for this process and that need
@@ -192,7 +194,8 @@ struct Lisp_Process
     gnutls_session_t gnutls_state;
     gnutls_certificate_client_credentials gnutls_x509_cred;
     gnutls_anon_client_credentials_t gnutls_anon_cred;
-    gnutls_x509_crt_t gnutls_certificate;
+    gnutls_x509_crt_t *gnutls_certificates;
+    int gnutls_certificates_length;
     unsigned int gnutls_peer_verification;
     unsigned int gnutls_extra_peer_verification;
     int gnutls_log_level;
@@ -218,7 +221,7 @@ INLINE struct Lisp_Process *
 XPROCESS (Lisp_Object a)
 {
   eassert (PROCESSP (a));
-  return XUNTAG (a, Lisp_Vectorlike);
+  return XUNTAG (a, Lisp_Vectorlike, struct Lisp_Process);
 }
 
 /* Every field in the preceding structure except for the first two
