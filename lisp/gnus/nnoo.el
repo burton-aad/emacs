@@ -1,6 +1,6 @@
 ;;; nnoo.el --- OO Gnus Backends
 
-;; Copyright (C) 1996-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news
@@ -269,8 +269,7 @@
 
 (defun nnoo-server-opened (backend server)
   (and (nnoo-current-server-p backend server)
-       nntp-server-buffer
-       (buffer-name nntp-server-buffer)))
+       (buffer-live-p nntp-server-buffer)))
 
 (defmacro nnoo-define-basics (backend)
   "Define `close-server', `server-opened' and `status-message'."

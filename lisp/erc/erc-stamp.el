@@ -1,6 +1,6 @@
 ;;; erc-stamp.el --- Timestamping for ERC messages
 
-;; Copyright (C) 2002-2004, 2006-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2004, 2006-2019 Free Software Foundation, Inc.
 
 ;; Author: Mario Lang <mlang@delysid.org>
 ;; Maintainer: emacs-devel@gnu.org
@@ -227,14 +227,10 @@ the correct column."
 	  (integer :tag "Column number")
 	  (const :tag "Unspecified" nil)))
 
-(defcustom erc-timestamp-use-align-to (and (not (featurep 'xemacs))
-					   (>= emacs-major-version 22)
-					   (eq window-system 'x))
+(defcustom erc-timestamp-use-align-to (eq window-system 'x)
   "If non-nil, use the :align-to display property to align the stamp.
 This gives better results when variable-width characters (like
 Asian language characters and math symbols) precede a timestamp.
-Unfortunately, it only works in Emacs 22 and when using the X
-Window System.
 
 A side effect of enabling this is that there will only be one
 space before a right timestamp in any saved logs."

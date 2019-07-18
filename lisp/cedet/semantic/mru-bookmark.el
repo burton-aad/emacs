@@ -1,8 +1,8 @@
 ;;; semantic/mru-bookmark.el --- Automatic bookmark tracking
 
-;; Copyright (C) 2007-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2019 Free Software Foundation, Inc.
 
-;; Author: Eric M. Ludlam <eric@siege-engine.com>
+;; Author: Eric M. Ludlam <zappo@gnu.org>
 
 ;; This file is part of GNU Emacs.
 
@@ -315,7 +315,7 @@ non-nil if the minor mode is enabled."
 	(al nil))
     (while (< idx len)
       (let ((r (ring-ref ring idx)))
-	(setq al (cons (cons (oref r :object-name) r)
+	(setq al (cons (cons (oref r object-name) r)
 		       al)))
       (setq idx (1+ idx)))
     (nreverse al)))

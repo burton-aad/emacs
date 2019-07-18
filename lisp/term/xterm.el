@@ -1,6 +1,6 @@
 ;;; xterm.el --- define function key sequences and standard colors for xterm  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1995, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1995, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: FSF
 ;; Keywords: terminals
@@ -767,13 +767,15 @@ Can be nil to mean \"no timeout\".")
 By not redisplaying right away for xterm queries, we can avoid
 unsightly flashing during initialization. Give up and redisplay
 anyway if we've been waiting a little while."
-  (let ((start-time (float-time)))
+  (let ((start-time (current-time)))
     (or (let ((inhibit-redisplay t))
           (read-event nil nil xterm-query-redisplay-timeout))
         (read-event nil nil
                     (and xterm-query-timeout
-                         (max 0 (+ start-time xterm-query-timeout
-                                   (- (float-time)))))))))
+			 (max 0 (float-time
+				 (time-subtract
+				  xterm-query-timeout
+				  (time-since start-time)))))))))
 
 (defun xterm--query (query handlers &optional no-async)
   "Send QUERY string to the terminal and watch for a response.
@@ -1009,7 +1011,7 @@ hitting screen's max DCS length."
 
 (defun xterm-rgb-convert-to-16bit (prim)
   "Convert an 8-bit primary color value PRIM to a corresponding 16-bit value."
-  (logior prim (lsh prim 8)))
+  (logior prim (ash prim 8)))
 
 (defun xterm-register-default-colors (colors)
   "Register the default set of colors for xterm or compatible emulator.

@@ -1,6 +1,6 @@
 /* X Communication module for terminals which understand the X protocol.
 
-Copyright (C) 1986, 1988, 1993-1994, 1996, 1999-2018 Free Software
+Copyright (C) 1986, 1988, 1993-1994, 1996, 1999-2019 Free Software
 Foundation, Inc.
 
 Author: Jon Arnold
@@ -45,6 +45,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "buffer.h"
 #include "coding.h"
 #include "sysselect.h"
+#include "pdumper.h"
 
 #ifdef MSDOS
 #include "msdos.h"
@@ -143,7 +144,7 @@ x_menu_set_in_use (bool in_use)
 {
   Lisp_Object frames, frame;
 
-  menu_items_inuse = in_use ? Qt : Qnil;
+  menu_items_inuse = in_use;
   popup_activated_flag = in_use;
 #ifdef USE_X_TOOLKIT
   if (popup_activated_flag)
@@ -1173,17 +1174,17 @@ menu_position_func (GtkMenu *menu, gint *x, gint *y, gboolean *push_in, gpointer
      items in x-display-monitor-attributes-list. */
   workarea = call3 (Qframe_monitor_workarea,
                     Qnil,
-                    make_number (data->x),
-                    make_number (data->y));
+                    make_fixnum (data->x),
+                    make_fixnum (data->y));
 
   if (CONSP (workarea))
     {
       int min_x, min_y;
 
-      min_x = XINT (XCAR (workarea));
-      min_y = XINT (Fnth (make_number (1), workarea));
-      max_x = min_x + XINT (Fnth (make_number (2), workarea));
-      max_y = min_y + XINT (Fnth (make_number (3), workarea));
+      min_x = XFIXNUM (XCAR (workarea));
+      min_y = XFIXNUM (Fnth (make_fixnum (1), workarea));
+      max_x = min_x + XFIXNUM (Fnth (make_fixnum (2), workarea));
+      max_y = min_y + XFIXNUM (Fnth (make_fixnum (3), workarea));
     }
 
   if (max_x < 0 || max_y < 0)
@@ -2043,9 +2044,9 @@ menu_help_callback (char const *help_string, int pane, int item)
     pane_name = first_item[MENU_ITEMS_ITEM_NAME];
 
   /* (menu-item MENU-NAME PANE-NUMBER)  */
-  menu_object = list3 (Qmenu_item, pane_name, make_number (pane));
+  menu_object = list3 (Qmenu_item, pane_name, make_fixnum (pane));
   show_help_echo (help_string ? build_string (help_string) : Qnil,
- 		  Qnil, menu_object, make_number (item));
+ 		  Qnil, menu_object, make_fixnum (item));
 }
 
 struct pop_down_menu
@@ -2401,15 +2402,12 @@ DEFUN ("menu-or-popup-active-p", Fmenu_or_popup_active_p, Smenu_or_popup_active_
   return (popup_activated ()) ? Qt : Qnil;
 }
 
+
+static void syms_of_xmenu_for_pdumper (void);
+
 void
 syms_of_xmenu (void)
 {
-#ifdef USE_X_TOOLKIT
-  enum { WIDGET_ID_TICK_START = 1 << 16 };
-  widget_id_tick = WIDGET_ID_TICK_START;
-  next_menubar_widget_id = 1;
-#endif
-
   DEFSYM (Qdebug_on_next_call, "debug-on-next-call");
   defsubr (&Smenu_or_popup_active_p);
 
@@ -2420,6 +2418,18 @@ syms_of_xmenu (void)
 #if defined (USE_GTK) || defined (USE_X_TOOLKIT)
   defsubr (&Sx_menu_bar_open_internal);
   Ffset (intern_c_string ("accelerate-menu"),
-	 intern_c_string (Sx_menu_bar_open_internal.symbol_name));
+	 intern_c_string (Sx_menu_bar_open_internal.s.symbol_name));
+#endif
+
+  pdumper_do_now_and_after_load (syms_of_xmenu_for_pdumper);
+}
+
+static void
+syms_of_xmenu_for_pdumper (void)
+{
+#ifdef USE_X_TOOLKIT
+  enum { WIDGET_ID_TICK_START = 1 << 16 };
+  widget_id_tick = WIDGET_ID_TICK_START;
+  next_menubar_widget_id = 1;
 #endif
 }

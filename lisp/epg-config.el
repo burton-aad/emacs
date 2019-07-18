@@ -1,6 +1,6 @@
 ;;; epg-config.el --- configuration of the EasyPG Library
 
-;; Copyright (C) 2006-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2006-2019 Free Software Foundation, Inc.
 
 ;; Author: Daiki Ueno <ueno@unixuser.org>
 ;; Keywords: PGP, GnuPG
@@ -31,8 +31,8 @@
 (defconst epg-version-number "1.0.0"
   "Version number of this package.")
 
-(defconst epg-bug-report-address "ueno@unixuser.org"
-  "Report bugs to this address.")
+(define-obsolete-variable-alias 'epg-bug-report-address
+  'report-emacs-bug-address "27.1")
 
 (defgroup epg ()
   "Interface to the GNU Privacy Guard (GnuPG)."

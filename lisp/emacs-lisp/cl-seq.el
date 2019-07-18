@@ -1,6 +1,6 @@
 ;;; cl-seq.el --- Common Lisp features, part 3  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1993, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1993, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Dave Gillespie <daveg@synaptics.com>
 ;; Old-Version: 2.02
@@ -111,6 +111,13 @@
 (defvar cl-test) (defvar cl-test-not)
 (defvar cl-if) (defvar cl-if-not)
 (defvar cl-key)
+
+;;;###autoload
+(defun cl-endp (x)
+  "Return true if X is the empty list; false if it is a cons.
+Signal an error if X is not a list."
+  (cl-check-type x list)
+  (null x))
 
 ;;;###autoload
 (defun cl-reduce (cl-func cl-seq &rest cl-keys)
@@ -696,9 +703,7 @@ Return the sublist of LIST whose car is ITEM.
 	(while (and cl-list (not (cl--check-test cl-item (car cl-list))))
 	  (setq cl-list (cdr cl-list)))
 	cl-list)
-    (if (and (numberp cl-item) (not (integerp cl-item)))
-	(member cl-item cl-list)
-      (memq cl-item cl-list))))
+    (memql cl-item cl-list)))
 (autoload 'cl--compiler-macro-member "cl-macs")
 
 ;;;###autoload
@@ -737,7 +742,7 @@ Return the sublist of LIST whose car matches.
 			(not (cl--check-test cl-item (car (car cl-alist))))))
 	  (setq cl-alist (cdr cl-alist)))
 	(and cl-alist (car cl-alist)))
-    (if (and (numberp cl-item) (not (integerp cl-item)))
+    (if (and (numberp cl-item) (not (fixnump cl-item)))
 	(assoc cl-item cl-alist)
       (assq cl-item cl-alist))))
 (autoload 'cl--compiler-macro-assoc "cl-macs")
@@ -1033,7 +1038,6 @@ Atoms are compared by `eql'; cons cells are compared recursively.
 (run-hooks 'cl-seq-load-hook)
 
 ;; Local variables:
-;; byte-compile-dynamic: t
 ;; generated-autoload-file: "cl-loaddefs.el"
 ;; End:
 

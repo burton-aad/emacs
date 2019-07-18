@@ -1,6 +1,6 @@
 ;;; shr.el --- Simple HTML Renderer -*- lexical-binding: t -*-
 
-;; Copyright (C) 2010-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2010-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: html
@@ -65,6 +65,13 @@ fit these criteria."
 (defcustom shr-use-fonts t
   "If non-nil, use proportional fonts for text."
   :version "25.1"
+  :group 'shr
+  :type 'boolean)
+
+(defcustom shr-discard-aria-hidden nil
+  "If non-nil, don't render tags with `aria-hidden=\"true\"'.
+This attribute is meant to tell screen readers to ignore a tag."
+  :version "27.1"
   :group 'shr
   :type 'boolean)
 
@@ -148,7 +155,15 @@ cid: URL as the argument.")
 
 (defface shr-selected-link
   '((t :inherit shr-link :background "red"))
-  "Face for link elements."
+  "Temporary face for externally visited link elements.
+When a link is visited with an external browser, the link
+temporarily blinks with this face."
+  :version "27.1"
+  :group 'shr)
+
+(defface shr-abbreviation
+  '((t :inherit underline :underline (:style wave)))
+  "Face for <abbr> elements."
   :version "27.1"
   :group 'shr)
 
@@ -314,9 +329,9 @@ under point instead."
 
 (defun shr-copy-url (url)
   "Copy the URL under point to the kill ring.
-If IMAGE-URL (the prefix) is non-nil, or there is no link under
-point, but there is an image under point then copy the URL of the
-image under point instead."
+With a prefix argument, or if there is no link under point, but
+there is an image under point then copy the URL of the image
+under point instead."
   (interactive (list (shr-url-at-point current-prefix-arg)))
   (if (not url)
       (message "No URL under point")
@@ -509,7 +524,9 @@ size, and full-buffer size."
 					shr-stylesheet))
 	  (setq style nil)))
       ;; If we have a display:none, then just ignore this part of the DOM.
-      (unless (equal (cdr (assq 'display shr-stylesheet)) "none")
+      (unless (or (equal (cdr (assq 'display shr-stylesheet)) "none")
+                  (and shr-discard-aria-hidden
+                       (equal (dom-attr dom 'aria-hidden) "true")))
         ;; We don't use shr-indirect-call here, since shr-descend is
         ;; the central bit of shr.el, and should be as fast as
         ;; possible.  Having one more level of indirection with its
@@ -718,7 +735,7 @@ size, and full-buffer size."
         (when (= (preceding-char) ?\s)
 	  (delete-char -1))
         (let ((gap-start (point)))
-	  (insert "\n")
+          (insert "\n")
 	  (shr-indent)
           (when (and (> (1- gap-start) (point-min))
                      ;; The link on both sides of the newline are the
@@ -729,10 +746,12 @@ size, and full-buffer size."
             ;; not visually.  This makes navigation between links work
             ;; well, but avoids underscores before the link on the next
             ;; line when indented.
-            (let ((props (copy-sequence (text-properties-at (point)))))
+            (let* ((props (copy-sequence (text-properties-at (point))))
+                   (face (plist-get props 'face)))
               ;; We don't want to use the faces on the indentation, because
-              ;; that's ugly.
-              (setq props (plist-put props 'face nil))
+              ;; that's ugly, but we do want to use the background colour.
+              (when face
+                (setq props (plist-put props 'face (shr-face-background face))))
 	      (add-text-properties gap-start (point) props))))
         (setq start (point))
         (shr-vertical-motion shr-internal-width)
@@ -1084,6 +1103,16 @@ element is the data blob and the second element is the content-type."
 	image)
     (insert (or alt ""))))
 
+(defun shr--image-type ()
+  "Emacs image type to use when displaying images.
+If Emacs has native image scaling support, that's used, but if
+not, `imagemagick' is preferred if it's present."
+  (if (or (and (fboundp 'image-transforms-p)
+	       (image-transforms-p))
+	  (not (fboundp 'imagemagick-types)))
+      nil
+    'imagemagick))
+
 (defun shr-rescale-image (data content-type width height
                                &optional max-width max-height)
   "Rescale DATA, if too big, to fit the current buffer.
@@ -1092,8 +1121,7 @@ WIDTH and HEIGHT are the sizes given in the HTML data, if any.
 The size of the displayed image will not exceed
 MAX-WIDTH/MAX-HEIGHT.  If not given, use the current window
 width/height instead."
-  (if (or (not (fboundp 'imagemagick-types))
-          (not (get-buffer-window (current-buffer))))
+  (if (not (get-buffer-window (current-buffer)))
       (create-image data nil t :ascent 100)
     (let* ((edges (window-inside-pixel-edges
                    (get-buffer-window (current-buffer))))
@@ -1114,13 +1142,13 @@ width/height instead."
                (< (* width scaling) max-width)
                (< (* height scaling) max-height))
           (create-image
-           data 'imagemagick t
+           data (shr--image-type) t
            :ascent 100
            :width width
            :height height
            :format content-type)
         (create-image
-         data 'imagemagick t
+         data (shr--image-type) t
          :ascent 100
          :max-width max-width
          :max-height max-height
@@ -1383,9 +1411,13 @@ ones, in case fg and bg are nil."
 (defun shr-tag-u (dom)
   (shr-fontize-dom dom 'underline))
 
-(defun shr-tag-tt (dom)
+(defun shr-tag-code (dom)
   (let ((shr-current-font 'default))
     (shr-generic dom)))
+
+(defun shr-tag-tt (dom)
+  ;; The `tt' tag is deprecated in favor of `code'.
+  (shr-tag-code dom))
 
 (defun shr-tag-ins (cont)
   (let* ((start (point))
@@ -1447,6 +1479,21 @@ ones, in case fg and bg are nil."
       (put-text-property start (1+ start) 'shr-target-id shr-target-id))
     (when url
       (shr-urlify (or shr-start start) (shr-expand-url url) title))))
+
+(defun shr-tag-abbr (dom)
+  (when-let* ((title (dom-attr dom 'title))
+	      (start (point)))
+    (shr-generic dom)
+    (shr-add-font start (point) 'shr-abbreviation)
+    (add-text-properties
+     start (point)
+     (list
+      'help-echo title
+      'mouse-face 'highlight))))
+
+(defun shr-tag-acronym (dom)
+  ;; `acronym' is deprecated in favor of `abbr'.
+  (shr-tag-abbr dom))
 
 (defun shr-tag-object (dom)
   (unless shr-inhibit-images
@@ -1746,7 +1793,14 @@ The preference is a float determined from `shr-prefer-media-type'."
 
 (defun shr-tag-ol (dom)
   (shr-ensure-paragraph)
-  (let ((shr-list-mode 1))
+  (let* ((attrs (dom-attributes dom))
+         (start-attr (alist-get 'start attrs))
+         ;; Start at 1 if there is no start attribute
+         ;; or if start can't be parsed as an integer.
+         (start-index (condition-case _
+                          (cl-parse-integer start-attr)
+                        (t 1)))
+         (shr-list-mode start-index))
     (shr-generic dom))
   (shr-ensure-paragraph))
 
@@ -1774,7 +1828,10 @@ The preference is a float determined from `shr-prefer-media-type'."
 
 (defun shr-mark-fill (start)
   ;; We may not have inserted any text to fill.
-  (unless (= start (point))
+  (when (and (/= start (point))
+             ;; Tables insert themselves with the correct indentation,
+             ;; so don't do anything if we're at the start of a table.
+             (not (get-text-property start 'shr-table-id)))
     (put-text-property start (1+ start)
 		       'shr-indentation shr-indentation)))
 
@@ -2071,7 +2128,8 @@ flags that control whether to collect or render objects."
 			(setq max (max max (nth 2 column))))
 		      max)))
 	(dotimes (_ (max height 1))
-	  (shr-indent)
+          (when (bolp)
+	    (shr-indent))
 	  (insert shr-table-vertical-line "\n"))
 	(dolist (column row)
 	  (when (> (nth 2 column) -1)

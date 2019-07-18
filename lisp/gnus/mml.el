@@ -1,6 +1,6 @@
 ;;; mml.el --- A package for parsing and validating MML documents
 
-;; Copyright (C) 1998-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; This file is part of GNU Emacs.
@@ -29,6 +29,7 @@
 (require 'mml-sec)
 (eval-when-compile (require 'cl-lib))
 (eval-when-compile (require 'url))
+(eval-when-compile (require 'gnus-util))
 
 (autoload 'message-make-message-id "message")
 (declare-function gnus-setup-posting-charset "gnus-msg" (group))
@@ -47,7 +48,6 @@
 
 (defvar gnus-article-mime-handles)
 (defvar gnus-newsrc-hashtb)
-(defvar message-default-charset)
 (defvar message-deletable-headers)
 (defvar message-options)
 (defvar message-posting-charset)
@@ -295,6 +295,14 @@ part.  This is for the internal use, you should never modify the value.")
 			(t
 			 (mm-find-mime-charset-region point (point)
 						      mm-hack-charsets))))
+	;; If the user has inserted a Content-Type header, then
+	;; respect that instead of overwriting with "text/plain".
+	(save-restriction
+	  (narrow-to-region point (point))
+	  (let ((content-type (mail-fetch-field "content-type")))
+	    (when (and content-type
+		       (eq (car tag) 'part))
+	      (setcdr (assq 'type tag) content-type))))
 	(when (and (not raw) (memq nil charsets))
 	  (if (or (memq 'unknown-encoding mml-confirmation-set)
 		  (message-options-get 'unknown-encoding)
@@ -702,9 +710,7 @@ be \"related\" or \"alternate\"."
 				  filename)))))
 	       (t
 		(let ((contents (cdr (assq 'contents cont))))
-		  (if (if (featurep 'xemacs)
-			  (string-match "[^\000-\377]" contents)
-			(multibyte-string-p contents))
+		  (if (multibyte-string-p contents)
 		      (progn
 			(set-buffer-multibyte t)
 			(insert contents)
@@ -906,8 +912,14 @@ be \"related\" or \"alternate\"."
 	      (or disposition
 		  (mml-content-disposition type (cdr (assq 'filename cont)))))
       (when parameters
-	(mml-insert-parameter-string
-	 cont mml-content-disposition-parameters))
+	(let ((cont (copy-sequence cont)))
+	  ;; Set the file name to what's specified by the user.
+	  (when-let ((recipient-filename (cdr (assq 'recipient-filename cont))))
+	    (setcdr cont
+		    (cons (cons 'filename recipient-filename)
+			  (cdr cont))))
+	  (mml-insert-parameter-string
+	   cont mml-content-disposition-parameters)))
       (insert "\n"))
     (unless (eq encoding '7bit)
       (insert (format "Content-Transfer-Encoding: %s\n" encoding)))
@@ -982,8 +994,10 @@ If HANDLES is non-nil, use it instead reparsing the buffer."
   (unless handles
     (setq handles (mm-dissect-buffer t)))
   (goto-char (point-min))
-  (search-forward "\n\n" nil t)
-  (delete-region (point) (point-max))
+  (if (search-forward "\n\n" nil 'move)
+      (delete-region (point) (point-max))
+    ;; No content in the part that is the sole part of this message.
+    (insert (if (bolp) "\n" "\n\n")))
   (if (stringp (car handles))
       (mml-insert-mime handles)
     (mml-insert-mime handles t))
@@ -1012,8 +1026,7 @@ If HANDLES is non-nil, use it instead reparsing the buffer."
     ;; Skip past any From_ headers.
     (while (looking-at "From ")
       (forward-line 1))
-    (let ((mail-parse-charset message-default-charset))
-      (mail-encode-encoded-word-buffer)))
+    (mail-encode-encoded-word-buffer))
   (message-encode-message-body))
 
 (defun mml-insert-mime (handle &optional no-markup)
@@ -1152,7 +1165,7 @@ If HANDLES is non-nil, use it instead reparsing the buffer."
 
 (easy-menu-define
   mml-menu mml-mode-map ""
-  `("Attachments"
+  '("Attachments"
     ["Attach File..." mml-attach-file :help "Attach a file at point"]
     ["Attach Buffer..." mml-attach-buffer
      :help "Attach a buffer to the outgoing message"]
@@ -1232,7 +1245,6 @@ See Info node `(emacs-mime)Composing'.
 \\{mml-mode-map}"
   :lighter " MML" :keymap mml-mode-map
   (when mml-mode
-    (easy-menu-add mml-menu mml-mode-map)
     (when (boundp 'dnd-protocol-alist)
       (set (make-local-variable 'dnd-protocol-alist)
 	   (append mml-dnd-protocol-alist dnd-protocol-alist)))))
@@ -1545,7 +1557,6 @@ Should be adopted if code in `message-send-mail' is changed."
 
 (defvar mml-preview-buffer nil)
 
-(autoload 'gnus-make-hashtable "gnus-util")
 (autoload 'widget-button-press "wid-edit" nil t)
 (declare-function widget-event-point "wid-edit" (event))
 ;; If gnus-buffer-configuration is bound this is loaded.

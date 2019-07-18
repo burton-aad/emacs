@@ -1,6 +1,6 @@
 ;; info.el --- Info package for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-1986, 1992-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1985-1986, 1992-2019 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: help
@@ -343,7 +343,9 @@ This only has an effect if `Info-hide-note-references' is non-nil."
 This applies to Info search for regular expressions.
 You might want to use something like \"[ \\t\\r\\n]+\" instead.
 In the Customization buffer, that is `[' followed by a space,
-a tab, a carriage return (control-M), a newline, and `]+'."
+a tab, a carriage return (control-M), a newline, and `]+'.  Don't
+add any capturing groups into this value; that can change the
+numbering of existing capture groups in unexpected ways."
   :type 'regexp
   :group 'info)
 
@@ -379,12 +381,6 @@ with wrapping around the current Info node."
   "Hook run when an Info node is selected as the current node."
   :type 'hook
   :group 'info)
-
-(defvar Info-edit-mode-hook nil
-  "Hook run when `Info-edit-mode' is activated.")
-
-(make-obsolete-variable 'Info-edit-mode-hook
-			"editing Info nodes by hand is not recommended." "24.4")
 
 (defvar-local Info-current-file nil
   "Info file that Info is now looking at, or nil.
@@ -642,21 +638,23 @@ Do the right thing if the file has been compressed or zipped."
 	  (insert-file-contents-literally fullname visit)
 	  (let ((inhibit-read-only t)
 		(coding-system-for-write 'no-conversion)
-		(inhibit-null-byte-detection t) ; Index nodes include null bytes
+		(inhibit-nul-byte-detection t) ; Index nodes include null bytes
 		(default-directory (or (file-name-directory fullname)
 				       default-directory)))
 	    (or (consp decoder)
 		(setq decoder (list decoder)))
 	    (apply #'call-process-region (point-min) (point-max)
 		   (car decoder) t t nil (cdr decoder))))
-      (let ((inhibit-null-byte-detection t)) ; Index nodes include null bytes
+      (let ((inhibit-nul-byte-detection t)) ; Index nodes include null bytes
 	(insert-file-contents fullname visit)))
 
     ;; Clear the caches of modified Info files.
     (let* ((attribs-old (cdr (assoc fullname Info-file-attributes)))
-	   (modtime-old (and attribs-old (nth 5 attribs-old)))
+	   (modtime-old (and attribs-old
+			     (file-attribute-modification-time attribs-old)))
 	   (attribs-new (and (stringp fullname) (file-attributes fullname)))
-	   (modtime-new (and attribs-new (nth 5 attribs-new))))
+	   (modtime-new (and attribs-new
+			     (file-attribute-modification-time attribs-new))))
       (when (and modtime-old modtime-new
 		 (time-less-p modtime-old modtime-new))
 	(setq Info-index-nodes (remove (assoc (or Info-current-file filename)
@@ -1375,7 +1373,7 @@ is non-nil)."
 			  ;; Index nodes include null bytes.  DIR
 			  ;; files should not have indices, but who
 			  ;; knows...
-			  (let ((inhibit-null-byte-detection t))
+			  (let ((inhibit-nul-byte-detection t))
 			    (insert-file-contents file)
 			    (setq Info-dir-file-name file)
 			    (push (current-buffer) buffers)
@@ -1529,7 +1527,7 @@ is non-nil)."
 	    (save-restriction
 	      (narrow-to-region start (point))
 	      (goto-char (point-min))
-	      (while (re-search-forward "^* \\([^:\n]+:\\(:\\|[^.\n]+\\).\\)" nil 'move)
+	      (while (re-search-forward "^\\* \\([^:\n]+:[^.\n]+.\\)" nil 'move)
 		;; Fold case straight away; `member-ignore-case' here wasteful.
 		(let ((x (downcase (match-string 1))))
 		  (if (member x seen)
@@ -1600,7 +1598,7 @@ is non-nil)."
   "Unescape double quotes and backslashes in VALUE."
   (let ((start 0)
 	(unquote value))
-    (while (string-match "[^\\\"]*\\(\\\\\\)[\\\\\"]" unquote start)
+    (while (string-match "[^\\\"]*\\(\\\\\\)[\\\"]" unquote start)
       (setq unquote (replace-match "" t t unquote 1))
       (setq start (- (match-end 0) 1)))
     unquote))
@@ -1617,7 +1615,7 @@ escaped (\\\",\\\\)."
   (let ((start 0)
 	(parameter-alist))
     (while (string-match
-	    "\\s *\\([^=]+\\)=\\(?:\\([^\\s \"]+\\)\\|\\(?:\"\\(\\(?:[^\\\"]\\|\\\\[\\\\\"]\\)*\\)\"\\)\\)"
+	    "\\s *\\([^=]+\\)=\\(?:\\([^\\s \"]+\\)\\|\\(?:\"\\(\\(?:[^\\\"]\\|\\\\[\\\"]\\)*\\)\"\\)\\)"
 	    parameter-string start)
       (setq start (match-end 0))
       (push (cons (match-string 1 parameter-string)
@@ -2732,7 +2730,7 @@ Because of ambiguities, this should be concatenated with something like
           (user-error "No menu in this node"))
         (cond
          ((eq (car-safe action) 'boundaries) nil)
-         ((eq action 'metadata) `(metadata (category . info-menu)))
+         ((eq action 'metadata) '(metadata (category . info-menu)))
          ((eq action 'lambda)
           (re-search-forward
            (concat "\n\\* +" (regexp-quote string) ":") nil t))
@@ -4266,8 +4264,9 @@ With a zero prefix arg, put the name inside a function call to `info'."
 ;; We deliberately fontify only ‘..’ quoting, and not `..', because
 ;; the former can be done much more reliably, i.e. without risking
 ;; false positives.
+;; FIXME: It doesn't handle nested quotes.
 (defvar Info-mode-font-lock-keywords
-  '(("‘\\([^’]*\\)’" (1 'Info-quoted))))
+  '(("‘\\([‘’]\\|[^‘’]*\\)’" (1 'Info-quoted))))
 
 ;; Autoload cookie needed by desktop.el
 ;;;###autoload
@@ -4381,59 +4380,6 @@ Advanced commands:
 		  (copy-marker (marker-position m)))
 	      (make-marker))))))
 
-(define-obsolete-variable-alias 'Info-edit-map 'Info-edit-mode-map "24.1")
-(defvar Info-edit-mode-map (let ((map (make-sparse-keymap)))
-                             (set-keymap-parent map text-mode-map)
-                             (define-key map "\C-c\C-c" 'Info-cease-edit)
-                             map)
-  "Local keymap used within `e' command of Info.")
-
-(make-obsolete-variable 'Info-edit-mode-map
-			"editing Info nodes by hand is not recommended."
-			"24.4")
-
-;; Info-edit mode is suitable only for specially formatted data.
-(put 'Info-edit-mode 'mode-class 'special)
-
-(define-derived-mode Info-edit-mode text-mode "Info Edit"
-  "Major mode for editing the contents of an Info node.
-Like text mode with the addition of `Info-cease-edit'
-which returns to Info mode for browsing."
-  (setq buffer-read-only nil)
-  (force-mode-line-update)
-  (buffer-enable-undo (current-buffer)))
-
-(make-obsolete 'Info-edit-mode
-	       "editing Info nodes by hand is not recommended." "24.4")
-
-(defun Info-edit ()
-  "Edit the contents of this Info node."
-  (interactive)
-  (Info-edit-mode)
-  (message "%s" (substitute-command-keys
-		 "Editing: Type \\<Info-edit-mode-map>\\[Info-cease-edit] to return to info")))
-
-(put 'Info-edit 'disabled "Editing Info nodes by hand is not recommended.
-This feature will be removed in future.")
-
-(make-obsolete 'Info-edit
-	       "editing Info nodes by hand is not recommended." "24.4")
-
-(defun Info-cease-edit ()
-  "Finish editing Info node; switch back to Info proper."
-  (interactive)
-  ;; Do this first, so nothing has changed if user C-g's at query.
-  (and (buffer-modified-p)
-       (y-or-n-p "Save the file? ")
-       (save-buffer))
-  (Info-mode)
-  (force-mode-line-update)
-  (and (marker-position Info-tag-table-marker)
-       (buffer-modified-p)
-       (message "Tags may have changed.  Use Info-tagify if necessary")))
-
-(make-obsolete 'Info-cease-edit
-	       "editing Info nodes by hand is not recommended." "24.4")
 
 (defvar Info-file-list-for-emacs
   '("ediff" "eudc" "forms" "gnus" "info" ("Info" . "info") ("mh" . "mh-e")
@@ -4766,7 +4712,7 @@ first line or header line, and for breadcrumb links.")
             ;; This is a serious problem for trying to handle multiple
             ;; frame types at once.  We want this text to be invisible
             ;; on frames that can display the font above.
-            (when (memq (framep (selected-frame)) '(x pc w32 ns))
+            (when (display-multi-font-p)
               (add-text-properties (1- (match-beginning 2)) (match-end 2)
                                    '(invisible t front-sticky nil rear-nonsticky t))))))
 
@@ -5202,7 +5148,7 @@ The INDENT level is ignored."
 TEXT is the text of the button we clicked on, a + or - item.
 TOKEN is data related to this node (NAME . FILE).
 INDENT is the current indentation depth."
-  (cond ((string-match "+" text)	;we have to expand this file
+  (cond ((string-match "\\+" text)	;we have to expand this file
 	 (speedbar-change-expand-button-char ?-)
 	 (if (speedbar-with-writable
 	      (save-excursion

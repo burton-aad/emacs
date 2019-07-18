@@ -1,6 +1,6 @@
 ;;; image-mode.el --- support for visiting image files  -*- lexical-binding: t -*-
 ;;
-;; Copyright (C) 2005-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2005-2019 Free Software Foundation, Inc.
 ;;
 ;; Author: Richard Stallman <rms@gnu.org>
 ;; Keywords: multimedia
@@ -53,7 +53,7 @@ See `image-mode-winprops'.")
 It is called with one argument, the initial WINPROPS.")
 
 ;; FIXME this doesn't seem mature yet. Document in manual when it is.
-(defvar image-transform-resize nil
+(defvar-local image-transform-resize nil
   "The image resize operation.
 Its value should be one of the following:
  - nil, meaning no resizing.
@@ -61,10 +61,10 @@ Its value should be one of the following:
  - `fit-width', meaning to fit the image to the window width.
  - A number, which is a scale factor (the default size is 1).")
 
-(defvar image-transform-scale 1.0
+(defvar-local image-transform-scale 1.0
   "The scale factor of the image being displayed.")
 
-(defvar image-transform-rotation 0.0
+(defvar-local image-transform-rotation 0.0
   "Rotation angle for the image in the current Image mode buffer.")
 
 (defvar image-transform-right-angle-fudge 0.0001
@@ -145,7 +145,7 @@ otherwise it defaults to t, used for times when the buffer is not displayed."
   (unless (listp image-mode-winprops-alist)
     (setq image-mode-winprops-alist nil))
   (add-hook 'window-configuration-change-hook
- 	    'image-mode-reapply-winprops nil t))
+	    #'image-mode-reapply-winprops nil t))
 
 ;;; Image scrolling functions
 
@@ -572,8 +572,8 @@ Key bindings:
 	;; Keep track of [vh]scroll when switching buffers
 	(image-mode-setup-winprops)
 
-	(add-hook 'change-major-mode-hook 'image-toggle-display-text nil t)
-	(add-hook 'after-revert-hook 'image-after-revert-hook nil t)
+	(add-hook 'change-major-mode-hook #'image-toggle-display-text nil t)
+	(add-hook 'after-revert-hook #'image-after-revert-hook nil t)
 	(run-mode-hooks 'image-mode-hook)
 	(let ((image (image-get-display-property))
 	      (msg1 (substitute-command-keys
@@ -692,6 +692,7 @@ on these modes."
 Remove text properties that display the image."
   (let ((inhibit-read-only t)
 	(buffer-undo-list t)
+	(create-lockfiles nil) ; avoid changing dir mtime by lock_file
 	(modified (buffer-modified-p)))
     (remove-list-of-text-properties (point-min) (point-max)
 				    '(display read-nonsticky ;; intangible
@@ -724,21 +725,26 @@ was inserted."
                            (not (and (boundp 'epa-file-encrypt-to)
                                      (local-variable-p
                                       'epa-file-encrypt-to))))))
-	 (file-or-data (if data-p
-			   (string-make-unibyte
-			    (buffer-substring-no-properties (point-min) (point-max)))
-			 filename))
+	 (file-or-data
+          (if data-p
+	      (let ((str
+		     (buffer-substring-no-properties (point-min) (point-max))))
+                (if enable-multibyte-characters
+                    (encode-coding-string str buffer-file-coding-system)
+                  str))
+	    filename))
 	 ;; If we have a `fit-width' or a `fit-height', don't limit
 	 ;; the size of the image to the window size.
 	 (edges (and (null image-transform-resize)
-		     (window-inside-pixel-edges
-		      (get-buffer-window (current-buffer)))))
+		     (window-inside-pixel-edges (get-buffer-window))))
 	 (type (if (image--imagemagick-wanted-p filename)
 		   'imagemagick
 		 (image-type file-or-data nil data-p)))
+         ;; :scale 1: If we do not set this, create-image will apply
+         ;; default scaling based on font size.
 	 (image (if (not edges)
-		    (create-image file-or-data type data-p)
-		  (create-image file-or-data type data-p
+		    (create-image file-or-data type data-p :scale 1)
+		  (create-image file-or-data type data-p :scale 1
 				:max-width (- (nth 2 edges) (nth 0 edges))
 				:max-height (- (nth 3 edges) (nth 1 edges)))))
 	 (inhibit-read-only t)
@@ -781,8 +787,9 @@ was inserted."
 (defun image--imagemagick-wanted-p (filename)
   (and (fboundp 'imagemagick-types)
        (not (eq imagemagick-types-inhibit t))
-       (not (memq (intern (upcase (file-name-extension filename)) obarray)
-                  imagemagick-types-inhibit))))
+       (not (and filename (file-name-extension filename)
+                 (memq (intern (upcase (file-name-extension filename)) obarray)
+                       imagemagick-types-inhibit)))))
 
 (defun image-toggle-hex-display ()
   "Toggle between image and hex display."
@@ -1142,6 +1149,7 @@ compiled with ImageMagick support."
     ;; Note: `image-size' looks up and thus caches the untransformed
     ;; image.  There's no easy way to prevent that.
     (let* ((size (image-size spec t))
+           (edges (window-inside-pixel-edges (get-buffer-window)))
 	   (resized
 	    (cond
 	     ((numberp image-transform-resize)
@@ -1151,13 +1159,11 @@ compiled with ImageMagick support."
 	     ((eq image-transform-resize 'fit-width)
 	      (image-transform-fit-width
 	       (car size) (cdr size)
-	       (- (nth 2 (window-inside-pixel-edges))
-		  (nth 0 (window-inside-pixel-edges)))))
+	       (- (nth 2 edges) (nth 0 edges))))
 	     ((eq image-transform-resize 'fit-height)
 	      (let ((res (image-transform-fit-width
 			  (cdr size) (car size)
-			  (- (nth 3 (window-inside-pixel-edges))
-			     (nth 1 (window-inside-pixel-edges))))))
+			  (- (nth 3 edges) (nth 1 edges)))))
 		(cons (cdr res) (car res)))))))
       `(,@(when (car resized)
 	    (list :width (car resized)))

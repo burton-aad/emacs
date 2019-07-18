@@ -1,6 +1,6 @@
 ;;; dnd.el --- drag and drop support
 
-;; Copyright (C) 2005-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2005-2019 Free Software Foundation, Inc.
 
 ;; Author: Jan Djärv <jan.h.d@swipnet.se>
 ;; Maintainer: emacs-devel@gnu.org
@@ -130,6 +130,7 @@ Return nil if URI is not a local file."
 			 (match-string 0 sysname)
 		       sysname))))
       (when (and hostname
+                 (not (eq system-type 'windows-nt))
 		 (or (string-equal "localhost" hostname)
 		     (string-equal (downcase sysname) hostname)
 		     (string-equal sysname-no-dot hostname)))
@@ -137,7 +138,7 @@ Return nil if URI is not a local file."
 
 (defsubst dnd-unescape-uri (uri)
   (replace-regexp-in-string
-   "%[A-Fa-f0-9][A-Fa-f0-9]"
+   "%[[:xdigit:]][[:xdigit:]]"
    (lambda (arg)
      (let ((str (make-string 1 0)))
        (aset str 0 (string-to-number (substring arg 1) 16))

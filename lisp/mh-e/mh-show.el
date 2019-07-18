@@ -1,10 +1,9 @@
 ;;; mh-show.el --- MH-Show mode
 
-;; Copyright (C) 1993, 1995, 1997, 2000-2018 Free Software Foundation,
+;; Copyright (C) 1993, 1995, 1997, 2000-2019 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Bill Wohler <wohler@newt.com>
-;; Maintainer: Bill Wohler <wohler@newt.com>
 ;; Keywords: mail
 ;; See: mh-e.el
 
@@ -375,8 +374,8 @@ still visible.\n")
            (cond ((not normal-exit)
                   (set-window-configuration config))
                  ,(if dont-return
-                      `(t (setq mh-previous-window-config config))
-                    `((and (get-buffer cur-buffer-name)
+                      '(t (setq mh-previous-window-config config))
+                    '((and (get-buffer cur-buffer-name)
                            (window-live-p (get-buffer-window
                                            (get-buffer cur-buffer-name))))
                       (pop-to-buffer (get-buffer cur-buffer-name) nil)))))))))

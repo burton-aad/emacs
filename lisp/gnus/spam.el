@@ -1,6 +1,6 @@
 ;;; spam.el --- Identifying spam
 
-;; Copyright (C) 2002-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Maintainer: Ted Zlatanov <tzz@lifelogs.com>
@@ -1520,7 +1520,7 @@ In the case of mover backends, checks the setting of
 ;;       nil)))
 
 (defun spam-fetch-field-fast (article field &optional prepared-data-header)
-  "Fetch a FIELD for ARTICLE with the internal `gnus-data-list' function.
+  "Fetch a FIELD for ARTICLE with the internal `gnus-data-find' function.
 When PREPARED-DATA-HEADER is given, don't look in the Gnus data.
 When FIELD is 'number, ARTICLE can be any number (since we want
 to find it out)."
@@ -1586,7 +1586,7 @@ to find it out)."
 (defun spam-fetch-article-header (article)
   (with-current-buffer gnus-summary-buffer
     (gnus-read-header article)
-    (nth 3 (assq article gnus-newsgroup-data))))
+    (gnus-data-header (gnus-data-find article))))
 ;;}}}
 
 ;;{{{ Spam determination.
@@ -2137,7 +2137,7 @@ See `spam-ifile-database'."
           (apply 'call-process-region
                  (point-min) (point-max) spam-ifile-program
                  nil temp-buffer-name nil "-c"
-                 (if db-param `(,db-param "-q") `("-q"))))
+                 (if db-param `(,db-param "-q") '("-q"))))
         ;; check the return now (we're back in the temp buffer)
         (goto-char (point-min))
         (if (not (eobp))
@@ -2166,7 +2166,7 @@ Uses `gnus-newsgroup-name' if category is nil (for ham registration)."
              (point-min) (point-max) spam-ifile-program
              nil nil nil
              add-or-delete-option category
-             (if db `(,db "-h") `("-h"))))))
+             (if db `(,db "-h") '("-h"))))))
 
 (defun spam-ifile-register-spam-routine (articles &optional unregister)
   (spam-ifile-register-with-ifile articles spam-ifile-spam-category unregister))
@@ -2473,7 +2473,7 @@ With a non-nil REMOVE, remove the ADDRESSES."
                      (point-min) (point-max)
                      spam-bogofilter-program
                      nil temp-buffer-name nil
-                     (if db `("-d" ,db "-v") `("-v"))))
+                     (if db `("-d" ,db "-v") '("-v"))))
             (setq return (spam-check-bogofilter-headers score))))
         return)
     (gnus-error 5 "`spam.el' doesn't support obsolete bogofilter versions")))
@@ -2501,7 +2501,7 @@ With a non-nil REMOVE, remove the ADDRESSES."
                      (point-min) (point-max)
                      spam-bogofilter-program
                      nil nil nil switch
-                     (if db `("-d" ,db "-v") `("-v")))))))
+                     (if db `("-d" ,db "-v") '("-v")))))))
     (gnus-error 5 "`spam.el' doesn't support obsolete bogofilter versions")))
 
 (defun spam-bogofilter-register-spam-routine (articles &optional unregister)

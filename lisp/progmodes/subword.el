@@ -1,6 +1,6 @@
 ;;; subword.el --- Handling capitalized subwords in a nomenclature -*- lexical-binding: t -*-
 
-;; Copyright (C) 2004-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2019 Free Software Foundation, Inc.
 
 ;; Author: Masatake YAMATO
 
@@ -110,9 +110,7 @@ called a `subword'.  Here are some examples:
   NSGraphicsContext  =>  \"NS\", \"Graphics\" and \"Context\"
 
 This mode changes the definition of a word so that word commands
-treat nomenclature boundaries as word boundaries.
-
-\\{subword-mode-map}"
+treat nomenclature boundaries as word boundaries."
     :lighter " ,"
     (when subword-mode (superword-mode -1))
     (subword-setup-buffer))
@@ -146,8 +144,6 @@ Optional argument ARG is the same as for `forward-word'."
       (funcall subword-backward-function)))
    (t
     (point))))
-
-(put 'subword-forward 'CUA 'move)
 
 (defun subword-backward (&optional arg)
   "Do the same as `backward-word' but on subwords.
@@ -188,8 +184,6 @@ Optional argument ARG is the same as for `mark-word'."
 	    (subword-forward arg)
 	    (point))
 	  nil t))))
-
-(put 'subword-backward 'CUA 'move)
 
 (defun subword-kill (arg)
   "Do the same as `kill-word' but on subwords.

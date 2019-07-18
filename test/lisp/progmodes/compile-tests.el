@@ -1,6 +1,6 @@
 ;;; compile-tests.el --- Test suite for compile.el.  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2011-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2011-2019 Free Software Foundation, Inc.
 
 ;; Author: Chong Yidong <cyd@stupidchicken.com>
 ;; Keywords:       internal
@@ -401,7 +401,10 @@ can only work with the NUL byte to disambiguate colons.")
 The test data is in `compile-tests--test-regexps-data'."
   (with-temp-buffer
     (font-lock-mode -1)
-    (mapc #'compile--test-error-line compile-tests--test-regexps-data)))
+    (mapc #'compile--test-error-line compile-tests--test-regexps-data)
+    (should (eq compilation-num-errors-found 87))
+    (should (eq compilation-num-warnings-found 32))
+    (should (eq compilation-num-infos-found 20))))
 
 (ert-deftest compile-test-grep-regexps ()
   "Test the `grep-regexp-alist' regexps.
@@ -421,6 +424,7 @@ The test data is in `compile-tests--grep-regexp-testcases'."
         (should (equal msg1 msg2))))
     (dolist (testcase compile-tests--grep-regexp-tricky-testcases)
       (ert-info ((format "%S" testcase) :prefix "testcase: ")
-        (compile--test-error-line testcase)))))
+        (compile--test-error-line testcase)))
+    (should (eq compilation-num-errors-found 8))))
 
 ;;; compile-tests.el ends here

@@ -1,5 +1,5 @@
 ;;; epa-file.el --- the EasyPG Assistant, transparent file encryption -*- lexical-binding: t -*-
-;; Copyright (C) 2006-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2006-2019 Free Software Foundation, Inc.
 
 ;; Author: Daiki Ueno <ueno@unixuser.org>
 ;; Keywords: PGP, GnuPG
@@ -105,9 +105,7 @@ encryption is used."
   (if (fboundp 'decode-coding-inserted-region)
       (save-restriction
 	(narrow-to-region (point) (point))
-	(insert (if enable-multibyte-characters
-		    (string-to-multibyte string)
-		  string))
+	(insert string)
 	(decode-coding-inserted-region
 	 (point-min) (point-max)
 	 (substring file 0 (string-match epa-file-name-regexp file))

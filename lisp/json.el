@@ -1,6 +1,6 @@
 ;;; json.el --- JavaScript Object Notation parser / generator -*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2006-2019 Free Software Foundation, Inc.
 
 ;; Author: Theresa O'Connor <ted@oconnor.cx>
 ;; Version: 1.4
@@ -53,6 +53,7 @@
 ;;; Code:
 
 (require 'map)
+(require 'subr-x)
 
 ;; Parameters
 
@@ -370,7 +371,7 @@ representation will be parsed correctly."
 
 (defun json--decode-utf-16-surrogates (high low)
   "Return the code point represented by the UTF-16 surrogates HIGH and LOW."
-  (+ (lsh (- high #xD800) 10) (- low #xDC00) #x10000))
+  (+ (ash (- high #xD800) 10) (- low #xDC00) #x10000))
 
 (defun json-read-escaped-char ()
   "Read the JSON string escaped character at point."
@@ -523,8 +524,8 @@ Please see the documentation of `json-object-type' and `json-key-type'."
     ;; Skip over the "}"
     (json-advance)
     (pcase json-object-type
-      (`alist (nreverse elements))
-      (`plist (json--plist-reverse elements))
+      ('alist (nreverse elements))
+      ('plist (json--plist-reverse elements))
       (_ elements))))
 
 ;; Hash table encoding
@@ -641,8 +642,8 @@ become JSON objects."
     ;; Skip over the "]"
     (json-advance)
     (pcase json-array-type
-      (`vector (nreverse (vconcat elements)))
-      (`list (nreverse elements)))))
+      ('vector (nreverse (vconcat elements)))
+      ('list (nreverse elements)))))
 
 ;; Array encoding
 
@@ -688,7 +689,19 @@ become JSON objects."
 
 (defun json-read ()
   "Parse and return the JSON object following point.
-Advances point just past JSON object."
+Advances point just past JSON object.
+
+If called with the following JSON after point
+
+  {\"a\": [1, 2, {\"c\": false}],
+   \"b\": \"foo\"}
+
+you will get the following structure returned:
+
+  ((a .
+      [1 2
+         ((c . :json-false))])
+   (b . \"foo\"))"
   (json-skip-whitespace)
   (let ((char (json-peek)))
     (if (zerop char)
@@ -716,7 +729,11 @@ Advances point just past JSON object."
 ;;; JSON encoder
 
 (defun json-encode (object)
-  "Return a JSON representation of OBJECT as a string."
+  "Return a JSON representation of OBJECT as a string.
+
+OBJECT should have a structure like one returned by `json-read'.
+If an error is detected during encoding, an error based on
+`json-error' is signalled."
   (cond ((memq object (list t json-null json-false))
          (json-encode-keyword object))
         ((stringp object)      (json-encode-string object))
@@ -730,36 +747,49 @@ Advances point just past JSON object."
         ((hash-table-p object) (json-encode-hash-table object))
         (t                     (signal 'json-error (list object)))))
 
-;; Pretty printing
+;; Pretty printing & minimizing
 
-(defun json-pretty-print-buffer ()
-  "Pretty-print current buffer."
-  (interactive)
-  (json-pretty-print (point-min) (point-max)))
+(defun json-pretty-print-buffer (&optional minimize)
+  "Pretty-print current buffer.
+With prefix argument MINIMIZE, minimize it instead."
+  (interactive "P")
+  (json-pretty-print (point-min) (point-max) minimize))
 
-(defun json-pretty-print (begin end)
-  "Pretty-print selected region."
-  (interactive "r")
-  (atomic-change-group
-    (let ((json-encoding-pretty-print t)
-          ;; Distinguish an empty objects from 'null'
-          (json-null :json-null)
-          ;; Ensure that ordering is maintained
-          (json-object-type 'alist)
-          (txt (delete-and-extract-region begin end)))
-      (insert (json-encode (json-read-from-string txt))))))
+(defun json-pretty-print (begin end &optional minimize)
+  "Pretty-print selected region.
+With prefix argument MINIMIZE, minimize it instead."
+  (interactive "r\nP")
+  (let ((json-encoding-pretty-print (null minimize))
+        ;; Distinguish an empty objects from 'null'
+        (json-null :json-null)
+        ;; Ensure that ordering is maintained
+        (json-object-type 'alist)
+        (err (gensym))
+        json)
+    (save-restriction
+      (narrow-to-region begin end)
+      (goto-char begin)
+      (while (not (eq (setq json (condition-case _
+                                     (json-read)
+                                   (json-error err)))
+                      err))
+        (delete-region begin (point))
+        (insert (json-encode json))
+        (setq begin (point))))))
 
-(defun json-pretty-print-buffer-ordered ()
-  "Pretty-print current buffer with object keys ordered."
-  (interactive)
+(defun json-pretty-print-buffer-ordered (&optional minimize)
+  "Pretty-print current buffer with object keys ordered.
+With prefix argument MINIMIZE, minimize it instead."
+  (interactive "P")
   (let ((json-encoding-object-sort-predicate 'string<))
-    (json-pretty-print-buffer)))
+    (json-pretty-print-buffer minimize)))
 
-(defun json-pretty-print-ordered (begin end)
-  "Pretty-print the region with object keys ordered."
-  (interactive "r")
+(defun json-pretty-print-ordered (begin end &optional minimize)
+  "Pretty-print the region with object keys ordered.
+With prefix argument MINIMIZE, minimize it instead."
+  (interactive "r\nP")
   (let ((json-encoding-object-sort-predicate 'string<))
-    (json-pretty-print begin end)))
+    (json-pretty-print begin end minimize)))
 
 (provide 'json)
 

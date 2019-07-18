@@ -1,6 +1,6 @@
 ;;; rmc.el --- read from a multiple choice question -*- lexical-binding: t -*-
 
-;; Copyright (C) 2016-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2016-2019 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 
@@ -118,7 +118,7 @@ Usage example:
                             choices)))
                   (condition-case nil
                       (let ((cursor-in-echo-area t))
-                        (read-char))
+                        (read-event))
                     (error nil))))
           (setq answer (lookup-key query-replace-map (vector tchar) t))
           (setq tchar

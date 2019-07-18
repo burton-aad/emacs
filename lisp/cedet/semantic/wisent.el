@@ -1,9 +1,8 @@
 ;;; semantic/wisent.el --- Wisent - Semantic gateway
 
-;; Copyright (C) 2001-2007, 2009-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2001-2007, 2009-2019 Free Software Foundation, Inc.
 
 ;; Author: David Ponce <david@dponce.com>
-;; Maintainer: David Ponce <david@dponce.com>
 ;; Created: 30 Aug 2001
 ;; Keywords: syntax
 

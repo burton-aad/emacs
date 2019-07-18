@@ -1,9 +1,8 @@
 ;;; find-func.el --- find the definition of the Emacs Lisp function near point  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1997, 1999, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1997, 1999, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Jens Petersen <petersen@kurims.kyoto-u.ac.jp>
-;; Maintainer: petersen@kurims.kyoto-u.ac.jp
 ;; Keywords: emacs-lisp, functions, variables
 ;; Created: 97/07/25
 

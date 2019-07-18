@@ -1,6 +1,6 @@
 @c -*- mode: texinfo; coding: utf-8 -*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998-1999, 2001-2018 Free Software
+@c Copyright (C) 1990-1995, 1998-1999, 2001-2019 Free Software
 @c Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node Lisp Data Types
@@ -166,7 +166,10 @@ latter are unique to Emacs Lisp.
 @node Integer Type
 @subsection Integer Type
 
-  The range of values for an integer depends on the machine.  The
+  Under the hood, there are two kinds of integers---small integers,
+called @dfn{fixnums}, and large integers, called @dfn{bignums}.
+
+  The range of values for a fixnum depends on the machine.  The
 minimum range is @minus{}536,870,912 to 536,870,911 (30 bits; i.e.,
 @ifnottex
 @minus{}2**29
@@ -182,8 +185,15 @@ to
 @math{2^{29}-1})
 @end tex
 but many machines provide a wider range.
-Emacs Lisp arithmetic functions do not check for integer overflow.  Thus
-@code{(1+ 536870911)} is @minus{}536,870,912 if Emacs integers are 30 bits.
+
+  Bignums can have arbitrary precision.  Operations that overflow a
+fixnum will return a bignum instead.
+
+  Fixnums can be compared with @code{eq}, but bignums require
+@code{eql} or @code{=}.  To test whether an integer is a fixnum or a
+bignum, you can compare it to @code{most-negative-fixnum} and
+@code{most-positive-fixnum}, or you can use the convenience predicates
+@code{fixnump} and @code{bignump} on any object.
 
   The read syntax for integers is a sequence of (base ten) digits with an
 optional sign at the beginning and an optional period at the end.  The
@@ -200,11 +210,6 @@ leading @samp{+} or a final @samp{.}.
 @end example
 
 @noindent
-As a special exception, if a sequence of digits specifies an integer
-too large or too small to be a valid integer object, the Lisp reader
-reads it as a floating-point number (@pxref{Floating-Point Type}).
-For instance, if Emacs integers are 30 bits, @code{536870912} is read
-as the floating-point number @code{536870912.0}.
 
   @xref{Numbers}, for more information.
 
@@ -959,7 +964,8 @@ char-tables.
 
   A string is an array of characters and a vector is an array of
 arbitrary objects.  A bool-vector can hold only @code{t} or @code{nil}.
-These kinds of array may have any length up to the largest integer.
+These kinds of array may have any length up to the largest fixnum,
+subject to system architecture limits and available memory.
 Char-tables are sparse arrays indexed by any valid character code; they
 can hold arbitrary objects.
 
@@ -1895,6 +1901,9 @@ with references to further information.
 @item arrayp
 @xref{Array Functions, arrayp}.
 
+@item bignump
+@xref{Predicates on Numbers, floatp}.
+
 @item bool-vector-p
 @xref{Bool-Vectors, bool-vector-p}.
 
@@ -1927,6 +1936,9 @@ with references to further information.
 
 @item custom-variable-p
 @xref{Variable Definitions, custom-variable-p}.
+
+@item fixnump
+@xref{Predicates on Numbers, floatp}.
 
 @item floatp
 @xref{Predicates on Numbers, floatp}.
@@ -2074,7 +2086,7 @@ appropriate chapter describing the data type.
 This function returns @code{t} if @var{object1} and @var{object2} are
 the same object, and @code{nil} otherwise.
 
-If @var{object1} and @var{object2} are integers with the same value,
+If @var{object1} and @var{object2} are fixnums with the same value,
 they are considered to be the same object (i.e., @code{eq} returns
 @code{t}).  If @var{object1} and @var{object2} are symbols with the
 same name, they are normally the same object---but see @ref{Creating
@@ -2084,7 +2096,7 @@ necessarily @code{eq} to each other: they are @code{eq} only if they
 are the same object, meaning that a change in the contents of one will
 be reflected by the same change in the contents of the other.
 For other types of objects whose contents cannot be changed (e.g.,
-floats), two arguments with the same contents might or might not be
+bignums and floats), two arguments with the same contents might or might not be
 the same object, and @code{eq} returns @code{t} or @code{nil}
 depending on whether the Lisp interpreter created one object or two.
 
@@ -2247,7 +2259,7 @@ However, two distinct buffers are never considered @code{equal}, even if
 their textual contents are the same.
 @end defun
 
-  The test for equality is implemented recursively; for example, given
+  For @code{equal}, equality is defined recursively; for example, given
 two cons cells @var{x} and @var{y}, @code{(equal @var{x} @var{y})}
 returns @code{t} if and only if both the expressions below return
 @code{t}:
@@ -2257,8 +2269,10 @@ returns @code{t} if and only if both the expressions below return
 (equal (cdr @var{x}) (cdr @var{y}))
 @end example
 
-Because of this recursive method, circular lists may therefore cause
-infinite recursion (leading to an error).
+Comparing circular lists may therefore cause deep recursion that leads
+to an error, and this may result in counterintuitive behavior such as
+@code{(equal a b)} returning @code{t} whereas @code{(equal b a)}
+signals an error.
 
 @defun equal-including-properties object1 object2
 This function behaves like @code{equal} in all cases but also requires

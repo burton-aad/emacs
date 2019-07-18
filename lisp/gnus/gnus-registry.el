@@ -1,6 +1,6 @@
 ;;; gnus-registry.el --- article registry for Gnus
 
-;; Copyright (C) 2002-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2019 Free Software Foundation, Inc.
 
 ;; Author: Ted Zlatanov <tzz@lifelogs.com>
 ;; Keywords: news registry
@@ -307,33 +307,40 @@ This is not required after changing `gnus-registry-cache-file'."
     (gnus-message 4 "Remaking the Gnus registry")
     (setq gnus-registry-db (gnus-registry-make-db))))
 
-(defun gnus-registry-load ()
-  "Load the registry from the cache file."
+(defun gnus-registry-load (&optional force)
+  "Load the registry from the cache file.
+If the registry is already loaded, don't reload unless FORCE is
+non-nil."
   (interactive)
-  (let ((file gnus-registry-cache-file))
-    (condition-case nil
-        (gnus-registry-read file)
-      (file-error
-       ;; Fix previous mis-naming of the registry file.
-       (let ((old-file-name
-	      (concat (file-name-sans-extension
-		      gnus-registry-cache-file)
-		     ".eioio")))
-	 (if (and (file-exists-p old-file-name)
-		  (yes-or-no-p
-		   (format "Rename registry file from %s to %s? "
-			   old-file-name file)))
-	     (progn
-	       (gnus-registry-read old-file-name)
-	       (setf (oref gnus-registry-db file) file)
-	       (gnus-message 1 "Registry filename changed to %s" file))
-	   (gnus-registry-remake-db t))))
-      (error
-       (gnus-message
-        1
-        "The Gnus registry could not be loaded from %s, creating a new one"
-        file)
-       (gnus-registry-remake-db t)))))
+  (when (or force
+	    ;; The registry is loaded by both
+	    ;; `gnus-registry-initialize' and the read-newsrc hook.
+	    ;; Don't load twice.
+	    (null (eieio-object-p gnus-registry-db)))
+    (let ((file gnus-registry-cache-file))
+      (condition-case nil
+          (gnus-registry-read file)
+	(file-error
+	 ;; Fix previous mis-naming of the registry file.
+	 (let ((old-file-name
+		(concat (file-name-sans-extension
+			 gnus-registry-cache-file)
+			".eioio")))
+	   (if (and (file-exists-p old-file-name)
+		    (yes-or-no-p
+		     (format "Rename registry file from %s to %s? "
+			     old-file-name file)))
+	       (progn
+		 (gnus-registry-read old-file-name)
+		 (setf (oref gnus-registry-db file) file)
+		 (gnus-message 1 "Registry filename changed to %s" file))
+	     (gnus-registry-remake-db t))))
+	(error
+	 (gnus-message
+          1
+          "The Gnus registry could not be loaded from %s, creating a new one"
+          file)
+	 (gnus-registry-remake-db t))))))
 
 (defun gnus-registry-read (file)
   "Do the actual reading of the registry persistence file."
@@ -799,11 +806,9 @@ Overrides existing keywords with FORCE set non-nil."
 
 ;; message field fetchers
 (defun gnus-registry-fetch-message-id-fast (article)
-  "Fetch the Message-ID quickly, using the internal gnus-data-list function."
-  (if (and (numberp article)
-           (assoc article (gnus-data-list nil)))
-      (mail-header-id (gnus-data-header (assoc article (gnus-data-list nil))))
-    nil))
+  "Fetch the Message-ID quickly, using the internal `gnus-data-find' function."
+  (when-let* ((data (and (numberp article) (gnus-data-find article))))
+    (mail-header-id (gnus-data-header data))))
 
 (defun gnus-registry-extract-addresses (text)
   "Extract all the addresses in a normalized way from TEXT.
@@ -830,23 +835,18 @@ Addresses without a name will say \"noname\"."
     nil))
 
 (defun gnus-registry-fetch-simplified-message-subject-fast (article)
-  "Fetch the Subject quickly, using the internal gnus-data-list function."
-  (if (and (numberp article)
-           (assoc article (gnus-data-list nil)))
-      (gnus-string-remove-all-properties
-       (gnus-registry-simplify-subject
-        (mail-header-subject (gnus-data-header
-                              (assoc article (gnus-data-list nil))))))
-    nil))
+  "Fetch the Subject quickly, using the internal `gnus-data-find' function."
+  (when-let* ((data (and (numberp article) (gnus-data-find article))))
+    (gnus-string-remove-all-properties
+     (gnus-registry-simplify-subject
+      (mail-header-subject (gnus-data-header data))))))
 
 (defun gnus-registry-fetch-sender-fast (article)
-  (when-let* ((data (and (numberp article)
-			 (assoc article (gnus-data-list nil)))))
+  (when-let* ((data (and (numberp article) (gnus-data-find article))))
     (mail-header-from (gnus-data-header data))))
 
 (defun gnus-registry-fetch-recipients-fast (article)
-  (when-let* ((data (and (numberp article)
-			 (assoc article (gnus-data-list nil))))
+  (when-let* ((data (and (numberp article) (gnus-data-find article)))
 	      (extra (mail-header-extra (gnus-data-header data))))
     (gnus-registry-sort-addresses
      (or (cdr (assq 'Cc extra)) "")
@@ -887,9 +887,7 @@ FUNCTION should take two parameters, a mark symbol and the cell value."
     (gnus-message 9 "Applying mark %s to %d articles"
                   mark (length articles))
     (dolist (article articles)
-      (gnus-summary-update-article
-       article
-       (assoc article (gnus-data-list nil))))))
+      (gnus-summary-update-article article (gnus-data-find article)))))
 
 ;; This is ugly code, but I don't know how to do it better.
 (defun gnus-registry-install-shortcuts ()
@@ -1110,6 +1108,12 @@ only the last one's marks are returned."
               (setq val (list val)))
             (gnus-registry-set-id-key id key val))))
       (message "Import done, collected %d entries" count))))
+
+(defun gnus-registry-clear ()
+  "Clear the registry."
+  (setq gnus-registry-db nil))
+
+(gnus-add-shutdown 'gnus-registry-clear 'gnus)
 
 ;;;###autoload
 (defun gnus-registry-initialize ()

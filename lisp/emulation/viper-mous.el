@@ -1,6 +1,6 @@
 ;;; viper-mous.el --- mouse support for Viper
 
-;; Copyright (C) 1994-1997, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1994-1997, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Michael Kifer <kifer@cs.stonybrook.edu>
 ;; Package: viper
@@ -280,7 +280,7 @@ See `viper-surrounding-word' for the definition of a word in this case."
 	     ;; the next pending event is not a mouse event, we execute the
 	     ;; current mouse event
 	     (progn
-	       (setq interrupting-event (viper-read-event))
+	       (setq interrupting-event (read-event))
 	       (viper-mouse-event-p last-input-event)))
 	    (progn ; interrupted wait
 	      (setq viper-global-prefix-argument arg)
@@ -362,7 +362,7 @@ this command."
 	   ;; pending event is not a mouse event, we execute the current mouse
 	   ;; event
 	   (progn
-	     (viper-read-event)
+	     (read-event)
 	     (viper-mouse-event-p last-input-event)))
 	  (progn ; interrupted wait
 	    (setq viper-global-prefix-argument (or viper-global-prefix-argument
@@ -380,7 +380,7 @@ this command."
 		  viper-global-prefix-argument nil))
 	(setq arg (or arg 1))
 
-	(viper-deactivate-mark)
+	(deactivate-mark)
 	(if (or (not (string= click-word viper-s-string))
 		(not (markerp viper-search-start-marker))
 		(not (equal (marker-buffer viper-search-start-marker)

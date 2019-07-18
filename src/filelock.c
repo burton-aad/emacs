@@ -1,6 +1,6 @@
 /* Lock files for editing.
 
-Copyright (C) 1985-1987, 1993-1994, 1996, 1998-2018 Free Software
+Copyright (C) 1985-1987, 1993-1994, 1996, 1998-2019 Free Software
 Foundation, Inc.
 
 Author: Richard King
@@ -152,7 +152,7 @@ get_boot_time (void)
     mib[1] = KERN_BOOTTIME;
     size = sizeof (boottime_val);
 
-    if (sysctl (mib, 2, &boottime_val, &size, NULL, 0) >= 0)
+    if (sysctl (mib, 2, &boottime_val, &size, NULL, 0) >= 0 && size != 0)
       {
 	boot_time = boottime_val.tv_sec;
 	return boot_time;
@@ -171,13 +171,10 @@ get_boot_time (void)
     }
 
 #if defined (BOOT_TIME)
-#ifndef CANNOT_DUMP
-  /* The utmp routines maintain static state.
-     Don't touch that state unless we are initialized,
-     since it might not survive dumping.  */
-  if (! initialized)
+  /* The utmp routines maintain static state.  Don't touch that state
+     if we are going to dump, since it might not survive dumping.  */
+  if (will_dump_p ())
     return boot_time;
-#endif /* not CANNOT_DUMP */
 
   /* Try to get boot time from utmp before wtmp,
      since utmp is typically much smaller than wtmp.
@@ -299,7 +296,7 @@ typedef struct
 
 /* Write the name of the lock file for FNAME into LOCKNAME.  Length
    will be that of FNAME plus two more for the leading ".#", plus one
-   for the null.  */
+   for the NUL.  */
 #define MAKE_LOCK_NAME(lockname, fname) \
   (lockname = SAFE_ALLOCA (SBYTES (fname) + 2 + 1), \
    fill_in_lock_file_name (lockname, fname))
@@ -432,26 +429,26 @@ static int
 lock_file_1 (char *lfname, bool force)
 {
   /* Call this first because it can GC.  */
-  printmax_t boot = get_boot_time ();
+  intmax_t boot = get_boot_time ();
 
   Lisp_Object luser_name = Fuser_login_name (Qnil);
   char const *user_name = STRINGP (luser_name) ? SSDATA (luser_name) : "";
   Lisp_Object lhost_name = Fsystem_name ();
   char const *host_name = STRINGP (lhost_name) ? SSDATA (lhost_name) : "";
   char lock_info_str[MAX_LFINFO + 1];
-  printmax_t pid = getpid ();
+  intmax_t pid = getpid ();
 
   if (boot)
     {
       if (sizeof lock_info_str
           <= snprintf (lock_info_str, sizeof lock_info_str,
-                       "%s@%s.%"pMd":%"pMd,
+		       "%s@%s.%"PRIdMAX":%"PRIdMAX,
                        user_name, host_name, pid, boot))
         return ENAMETOOLONG;
     }
   else if (sizeof lock_info_str
            <= snprintf (lock_info_str, sizeof lock_info_str,
-                        "%s@%s.%"pMd,
+			"%s@%s.%"PRIdMAX,
                         user_name, host_name, pid))
     return ENAMETOOLONG;
 
@@ -666,7 +663,7 @@ lock_file (Lisp_Object fn)
   /* Don't do locking while dumping Emacs.
      Uncompressing wtmp files uses call-process, which does not work
      in an uninitialized Emacs.  */
-  if (! NILP (Vpurify_flag))
+  if (will_dump_p ())
     return;
 
   orig_fn = fn;
@@ -825,6 +822,7 @@ t if it is locked by you, else a string saying which user has locked it.  */)
   USE_SAFE_ALLOCA;
 
   filename = Fexpand_file_name (filename, Qnil);
+  filename = ENCODE_FILE (filename);
 
   MAKE_LOCK_NAME (lfname, filename);
 

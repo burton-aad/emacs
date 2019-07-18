@@ -1,6 +1,6 @@
 ;;; ert-tests.el --- ERT's self-tests  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2007-2008, 2010-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2008, 2010-2019 Free Software Foundation, Inc.
 
 ;; Author: Christian Ohler <ohler@gnu.org>
 
@@ -188,7 +188,7 @@ failed or if there was a problem."
 
 (ert-deftest ert-test-should-with-macrolet ()
   (let ((test (make-ert-test :body (lambda ()
-                                     (cl-macrolet ((foo () `(progn t nil)))
+                                     (cl-macrolet ((foo () '(progn t nil)))
                                        (should (foo)))))))
     (let ((result (let ((ert-debug-on-error nil))
                     (ert-run-test test))))
@@ -376,7 +376,7 @@ This macro is used to test if macroexpansion in `should' works."
          (test (make-ert-test :body test-body))
          (result (ert-run-test test)))
     (should (ert-test-failed-p result))
-    (should (eq (nth 1 (car (ert-test-failed-backtrace result)))
+    (should (eq (backtrace-frame-fun (car (ert-test-failed-backtrace result)))
                 'signal))))
 
 (ert-deftest ert-test-messages ()
@@ -490,9 +490,9 @@ This macro is used to test if macroexpansion in `should' works."
                :name nil
                :body nil
                :tags '(a b))))
-    (should (equal (ert-select-tests `(tag a) (list test)) (list test)))
-    (should (equal (ert-select-tests `(tag b) (list test)) (list test)))
-    (should (equal (ert-select-tests `(tag c) (list test)) '()))))
+    (should (equal (ert-select-tests '(tag a) (list test)) (list test)))
+    (should (equal (ert-select-tests '(tag b) (list test)) (list test)))
+    (should (equal (ert-select-tests '(tag c) (list test)) '()))))
 
 
 ;;; Tests for utility functions.

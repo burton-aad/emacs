@@ -1,9 +1,8 @@
 ;;; 5x5.el --- simple little puzzle game
 
-;; Copyright (C) 1999-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: Dave Pearson <davep@davep.org>
-;; Maintainer: Dave Pearson <davep@davep.org>
 ;; Created: 1998-10-03
 ;; Keywords: games puzzles
 

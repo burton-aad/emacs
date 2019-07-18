@@ -1,8 +1,8 @@
 ;;; nnml.el --- mail spool access for Gnus
 
-;; Copyright (C) 1995-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1995-2019 Free Software Foundation, Inc.
 
-;; Authors: Didier Verna <didier@xemacs.org> (adding compaction)
+;; Authors: Didier Verna <didier@didierverna.net> (adding compaction)
 ;;	Simon Josefsson <simon@josefsson.org>
 ;;	Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;;	Masanobu UMEDA <umerin@flab.flab.fujitsu.junet>
@@ -259,7 +259,7 @@ non-nil.")
      (t
       (nnheader-re-read-dir nnml-current-directory)
       (nnmail-activate 'nnml)
-      (let ((active (nth 1 (assoc group nnml-group-alist))))
+      (let ((active (nth 1 (assoc-string group nnml-group-alist))))
 	(if (not active)
 	    (nnheader-report 'nnml "No such group: %s" decoded)
 	  (nnheader-report 'nnml "Selected group %s" decoded)
@@ -295,7 +295,7 @@ non-nil.")
     (nnheader-report 'nnml "%s is a file"
 		     (directory-file-name (nnml-group-pathname group
 							       nil server))))
-   ((assoc group nnml-group-alist)
+   ((assoc-string group nnml-group-alist)
     t)
    (t
     (let (active)
@@ -344,7 +344,8 @@ non-nil.")
     (while (and articles is-old)
       (if (and (setq article (nnml-article-to-file
 			      (setq number (pop articles))))
-	       (setq mod-time (nth 5 (file-attributes article)))
+	       (setq mod-time (file-attribute-modification-time
+			       (file-attributes article)))
 	       (nnml-deletable-article-p group number)
 	       (setq is-old (nnmail-expired-article-p group mod-time force
 						      nnml-inhibit-expiry)))
@@ -378,7 +379,7 @@ non-nil.")
 		  (nnml-nov-delete-article group number))
 	      (push number rest)))
 	(push number rest)))
-    (let ((active (nth 1 (assoc group nnml-group-alist))))
+    (let ((active (nth 1 (assoc-string group nnml-group-alist))))
       (when active
 	(setcar active (or (and active-articles
 				(apply 'min active-articles))
@@ -519,7 +520,7 @@ non-nil.")
       (nnheader-report 'nnml "No such directory: %s/" file))
     ;; Remove the group from all structures.
     (setq nnml-group-alist
-	  (delq (assoc group nnml-group-alist) nnml-group-alist)
+	  (delq (assoc-string group nnml-group-alist) nnml-group-alist)
 	  nnml-current-group nil
 	  nnml-current-directory nil)
     ;; Save the active file.
@@ -548,7 +549,7 @@ non-nil.")
       (when (<= (length (directory-files old-dir)) 2)
 	(ignore-errors (delete-directory old-dir)))
       ;; That went ok, so we change the internal structures.
-      (let ((entry (assoc group nnml-group-alist)))
+      (let ((entry (assoc-string group nnml-group-alist)))
 	(when entry
 	  (setcar entry new-name))
 	(setq nnml-current-directory nil
@@ -596,7 +597,7 @@ non-nil.")
     (when (setq path (nnml-article-to-file article))
       (when (file-writable-p path)
 	(or (not nnmail-keep-last-article)
-	    (not (eq (cdr (nth 1 (assoc group nnml-group-alist)))
+	    (not (eq (cdr (nth 1 (assoc-string group nnml-group-alist)))
 		     article)))))))
 
 ;; Find an article number in the current group given the Message-ID.
@@ -741,7 +742,7 @@ article number.  This function is called narrowed to an article."
   "Compute the next article number in GROUP on SERVER."
   (let* ((encoded (if nnmail-group-names-not-encoded-p
 		      (nnml-encoded-group-name group server)))
-	 (active (cadr (assoc (or encoded group) nnml-group-alist))))
+	 (active (cadr (assoc-string (or encoded group) nnml-group-alist))))
     ;; The group wasn't known to nnml, so we just create an active
     ;; entry for it.
     (unless active
@@ -771,7 +772,7 @@ article number.  This function is called narrowed to an article."
 (defun nnml-save-incremental-nov ()
   (save-excursion
     (while nnml-incremental-nov-buffer-alist
-      (when (buffer-name (cdar nnml-incremental-nov-buffer-alist))
+      (when (buffer-live-p (cdar nnml-incremental-nov-buffer-alist))
 	(set-buffer (cdar nnml-incremental-nov-buffer-alist))
 	(when (buffer-modified-p)
 	  (nnmail-write-region (point-min) (point-max)
@@ -782,7 +783,7 @@ article number.  This function is called narrowed to an article."
 	    (cdr nnml-incremental-nov-buffer-alist)))))
 
 (defun nnml-open-incremental-nov (group)
-  (or (cdr (assoc group nnml-incremental-nov-buffer-alist))
+  (or (cdr (assoc-string group nnml-incremental-nov-buffer-alist))
       (let ((buffer (nnml-get-nov-buffer group t)))
 	(push (cons group buffer) nnml-incremental-nov-buffer-alist)
 	buffer)))
@@ -791,14 +792,14 @@ article number.  This function is called narrowed to an article."
   "Add a nov line for the GROUP nov headers, incrementally."
   (with-current-buffer (nnml-open-incremental-nov group)
     (goto-char (point-max))
-    (mail-header-set-number headers article)
+    (setf (mail-header-number headers) article)
     (nnheader-insert-nov headers)))
 
 (defun nnml-add-nov (group article headers)
   "Add a nov line for the GROUP base."
   (with-current-buffer (nnml-open-nov group)
     (goto-char (point-max))
-    (mail-header-set-number headers article)
+    (setf (mail-header-number headers) article)
     (nnheader-insert-nov headers)))
 
 (defsubst nnml-header-value ()
@@ -815,8 +816,8 @@ article number.  This function is called narrowed to an article."
 	     (1- (point))
 	   (point-max))))
       (let ((headers (nnheader-parse-naked-head)))
-	(mail-header-set-chars headers chars)
-	(mail-header-set-number headers number)
+	(setf (mail-header-chars  headers) chars)
+	(setf (mail-header-number headers) number)
 	headers))))
 
 (defun nnml-get-nov-buffer (group &optional incrementalp)
@@ -837,9 +838,7 @@ article number.  This function is called narrowed to an article."
     buffer))
 
 (defun nnml-open-nov (group)
-  (or (let ((buffer (cdr (assoc group nnml-nov-buffer-alist))))
-	(and (buffer-name buffer)
-	     buffer))
+  (or (gnus-buffer-live-p (cdr (assoc group nnml-nov-buffer-alist)))
       (let ((buffer (nnml-get-nov-buffer group)))
 	(push (cons group buffer) nnml-nov-buffer-alist)
 	buffer)))
@@ -847,7 +846,7 @@ article number.  This function is called narrowed to an article."
 (defun nnml-save-nov ()
   (save-excursion
     (while nnml-nov-buffer-alist
-      (when (buffer-name (cdar nnml-nov-buffer-alist))
+      (when (buffer-live-p (cdar nnml-nov-buffer-alist))
 	(set-buffer (cdar nnml-nov-buffer-alist))
 	(when (buffer-modified-p)
 	  (nnmail-write-region (point-min) (point-max)

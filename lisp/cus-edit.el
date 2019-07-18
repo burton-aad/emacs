@@ -1,6 +1,6 @@
 ;;; cus-edit.el --- tools for customizing Emacs and Lisp packages -*- lexical-binding:t -*-
 ;;
-;; Copyright (C) 1996-1997, 1999-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1996-1997, 1999-2019 Free Software Foundation, Inc.
 ;;
 ;; Author: Per Abrahamsen <abraham@dina.kvl.dk>
 ;; Maintainer: emacs-devel@gnu.org
@@ -552,7 +552,11 @@ value unless you are sure you know what it does."
 			 (setq prefixes nil)
 			 (delete-region (point-min) (point)))
 		     (setq prefixes (cdr prefixes))))))
-	   (subst-char-in-region (point-min) (point-max) ?- ?\s t)
+	   (goto-char (point-min))
+           ;; Translate characters commonly used as delimiters between
+           ;; words in symbols into space; e.g. foo:bar-zot/thing.
+	   (while (re-search-forward "[-:/]+" nil t)
+	     (replace-match " "))
 	   (capitalize-region (point-min) (point-max))
 	   (unless no-suffix
 	     (goto-char (point-max))
@@ -917,7 +921,7 @@ the current value of the variable, otherwise `symbol-value' is used.
 If optional COMMENT argument is non-nil, also prompt for a comment and return
 it as the third element in the list."
   (let* ((var (read-variable prompt-var))
-	 (minibuffer-help-form '(describe-variable var))
+	 (minibuffer-help-form `(describe-variable ',var))
 	 (val
 	  (let ((prop (get var 'variable-interactive))
 		(type (get var 'custom-type))
@@ -1722,10 +1726,8 @@ Operate on all settings in this buffer:\n"))
   (unless (eq (preceding-char) ?\n)
     (widget-insert "\n"))
   (message "Creating customization items ...done")
-  (message "Resetting customization items...")
   (unless (eq custom-buffer-style 'tree)
     (mapc 'custom-magic-reset custom-options))
-  (message "Resetting customization items...done")
   (message "Creating customization setup...")
   (widget-setup)
   (buffer-enable-undo)
@@ -1827,20 +1829,9 @@ item in another window.\n\n"))
 			      (" `-" "bottom")))
 
 (defun custom-browse-insert-prefix (prefix)
-  "Insert PREFIX.  On XEmacs convert it to line graphics."
-  ;; Fixme: do graphics.
-  (if nil ; (featurep 'xemacs)
-      (progn
-	(insert "*")
-	(while (not (string-equal prefix ""))
-	  (let ((entry (substring prefix 0 3)))
-	    (setq prefix (substring prefix 3))
-	    (let ((overlay (make-overlay (1- (point)) (point) nil t nil))
-		  (name (nth 1 (assoc entry custom-browse-alist))))
-	      (overlay-put overlay 'end-glyph (widget-glyph-find name entry))
-	      (overlay-put overlay 'start-open t)
-	      (overlay-put overlay 'end-open t)))))
-    (insert prefix)))
+  "Insert PREFIX."
+  (declare (obsolete insert "27.1"))
+  (insert prefix))
 
 ;;; Modification of Basic Widgets.
 ;;
@@ -2444,7 +2435,7 @@ If INITIAL-STRING is non-nil, use that rather than \"Parent groups:\"."
   :group 'custom-faces)
 
 (defface custom-variable-tag
-  `((((class color) (background dark))
+  '((((class color) (background dark))
      :foreground "light blue" :weight bold)
     (((min-colors 88) (class color) (background light))
      :foreground "blue1" :weight bold)
@@ -2581,7 +2572,8 @@ try matching its doc string against `custom-guess-doc-alist'."
 
     ;; If we don't know the state, see if we need to edit it in lisp form.
     (unless state
-      (setq state (if (custom-show type value) 'unknown 'hidden)))
+      (with-suppressed-warnings ((obsolete custom-show))
+        (setq state (if (custom-show type value) 'unknown 'hidden))))
     (when (eq state 'unknown)
       (unless (widget-apply conv :match value)
 	(setq form 'mismatch)))
@@ -3920,7 +3912,7 @@ restoring it to the state of a face that has never been customized."
 (defun custom-hook-convert-widget (widget)
   ;; Handle `:options'.
   (let* ((options (widget-get widget :options))
-	 (other `(editable-list :inline t
+	 (other '(editable-list :inline t
 				:entry-format "%i %d%v"
 				(function :format " %v")))
 	 (args (if options
@@ -4043,7 +4035,7 @@ If GROUPS-ONLY is non-nil, return only those members that are groups."
     (cond ((and (eq custom-buffer-style 'tree)
 		(eq state 'hidden)
 		(or members (custom-unloaded-widget-p widget)))
-	   (custom-browse-insert-prefix prefix)
+	   (insert prefix)
 	   (push (widget-create-child-and-convert
 		  widget 'custom-browse-visibility
 		  :tag "+")
@@ -4056,19 +4048,17 @@ If GROUPS-ONLY is non-nil, return only those members that are groups."
 	   (widget-put widget :buttons buttons))
 	  ((and (eq custom-buffer-style 'tree)
 		(zerop (length members)))
-	   (custom-browse-insert-prefix prefix)
-	   (insert "[ ]-- ")
+	   (insert prefix "[ ]-- ")
 	   (push (widget-create-child-and-convert
 		  widget 'custom-browse-group-tag)
 		 buttons)
 	   (insert " " tag "\n")
 	   (widget-put widget :buttons buttons))
 	  ((eq custom-buffer-style 'tree)
-	   (custom-browse-insert-prefix prefix)
+	   (insert prefix)
 	   (if (zerop (length members))
 	       (progn
-		 (custom-browse-insert-prefix prefix)
-		 (insert "[ ]-- ")
+		 (insert prefix "[ ]-- ")
 		 ;; (widget-glyph-insert nil "[ ]" "empty")
 		 ;; (widget-glyph-insert nil "-- " "horizontal")
 		 (push (widget-create-child-and-convert

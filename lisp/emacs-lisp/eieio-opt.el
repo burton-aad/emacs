@@ -1,6 +1,6 @@
 ;;; eieio-opt.el -- eieio optional functions (debug, printing, speedbar)
 
-;; Copyright (C) 1996, 1998-2003, 2005, 2008-2018 Free Software
+;; Copyright (C) 1996, 1998-2003, 2005, 2008-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
@@ -31,6 +31,10 @@
 (require 'eieio)
 (require 'find-func)
 (require 'speedbar)
+
+;; We require cl-extra here instead of cl-lib because we need the
+;; internal `cl--describe-class' function.
+(require 'cl-extra)
 
 ;;; Code:
 ;;;###autoload
@@ -155,8 +159,7 @@ are not abstract."
 	  (insert "\n\n[Class description not available until class definition is loaded.]\n")
 	(save-excursion
 	  (insert (propertize "\n\nClass description:\n" 'face 'bold))
-	  (eieio-help-class ctr))
-	))))
+	  (cl--describe-class ctr))))))
 
 
 ;;; METHOD STATS
@@ -327,7 +330,7 @@ current expansion depth."
 (defun eieio-sb-expand (text class indent)
   "For button TEXT, expand CLASS at the current location.
 Argument INDENT is the depth of indentation."
-  (cond ((string-match "+" text)	;we have to expand this file
+  (cond ((string-match "\\+" text)	;we have to expand this file
 	 (speedbar-change-expand-button-char ?-)
 	 (speedbar-with-writable
 	   (save-excursion

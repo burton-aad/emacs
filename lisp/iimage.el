@@ -1,6 +1,6 @@
 ;;; iimage.el --- Inline image minor mode.
 
-;; Copyright (C) 2004-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2019 Free Software Foundation, Inc.
 
 ;; Author: KOSEKI Yoshinori <kose@meadowy.org>
 ;; Maintainer: emacs-devel@gnu.org
@@ -90,7 +90,7 @@ Examples of image filename patterns to match:
   (interactive "P")
   (iimage-mode-buffer nil)
   (iimage-mode-buffer t)
-  (recenter arg))
+  (recenter-top-bottom arg))
 
 ;;;###autoload
 (define-obsolete-function-alias 'turn-on-iimage-mode 'iimage-mode "24.1")

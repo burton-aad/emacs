@@ -1,6 +1,6 @@
 ;;; hideif.el --- hides selected code within ifdef  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1988, 1994, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1988, 1994, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Brian Marick
 ;;	Daniel LaLiberte <liberte@holonexus.org>
@@ -540,7 +540,7 @@ that form should be displayed.")
 
 (defconst hif-token-regexp
   (concat (regexp-opt (mapcar 'car hif-token-alist))
-          "\\|0x[0-9a-fA-F]+\\.?[0-9a-fA-F]*"
+          "\\|0x[[:xdigit:]]+\\.?[[:xdigit:]]*"
           "\\|[0-9]+\\.?[0-9]*"  ;; decimal/octal
           "\\|\\w+"))
 
@@ -595,7 +595,7 @@ that form should be displayed.")
                    ;; 1. postfix 'l', 'll', 'ul' and 'ull'
                    ;; 2. floating number formats (like 1.23e4)
                    ;; 3. 098 is interpreted as octal conversion error
-                   (if (string-match "0x\\([0-9a-fA-F]+\\.?[0-9a-fA-F]*\\)"
+                   (if (string-match "0x\\([[:xdigit:]]+\\.?[[:xdigit:]]*\\)"
                                      token)
                        (hif-string-to-number (match-string 1 token) 16)) ;; hex
                    (if (string-match "\\`0[0-9]+\\(\\.[0-9]+\\)?\\'" token)
@@ -672,12 +672,7 @@ that form should be displayed.")
        result))
     (nreverse result)))
 
-(defun hif-flatten (l)
-  "Flatten a tree."
-  (apply #'nconc
-         (mapcar (lambda (x) (if (listp x)
-                                 (hif-flatten x)
-                               (list x))) l)))
+(define-obsolete-function-alias 'hif-flatten #'flatten-tree "27.1")
 
 (defun hif-expand-token-list (tokens &optional macroname expand_list)
   "Perform expansion on TOKENS till everything expanded.
@@ -748,7 +743,7 @@ detecting self-reference."
 
          expanded))
 
-      (hif-flatten (nreverse expanded)))))
+      (flatten-tree (nreverse expanded)))))
 
 (defun hif-parse-exp (token-list &optional macroname)
   "Parse the TOKEN-LIST.
@@ -1039,16 +1034,12 @@ preprocessing token"
 (defun hif-shiftleft (a b)
   (setq a (hif-mathify a))
   (setq b (hif-mathify b))
-  (if (< a 0)
-      (ash a b)
-    (lsh a b)))
+  (ash a b))
 
 (defun hif-shiftright (a b)
   (setq a (hif-mathify a))
   (setq b (hif-mathify b))
-  (if (< a 0)
-      (ash a (- b))
-    (lsh a (- b))))
+  (ash a (- b)))
 
 
 (defalias 'hif-multiply      (hif-mathify-binop *))
@@ -1170,7 +1161,7 @@ preprocessing token"
         (setq actual-parms (cdr actual-parms)))
 
       ;; Replacement completed, flatten the whole token list
-      (setq macro-body (hif-flatten macro-body))
+      (setq macro-body (flatten-tree macro-body))
 
       ;; Stringification and token concatenation happens here
       (hif-token-concatenation (hif-token-stringification macro-body)))))
@@ -1625,7 +1616,7 @@ not be expanded."
          ((integerp result)
           (if (or (= 0 result) (= 1 result))
               (message "%S <= `%s'" result exprstring)
-            (message "%S (0x%x) <= `%s'" result result exprstring)))
+            (message "%S (%#x) <= `%s'" result result exprstring)))
          ((null result) (message "%S <= `%s'" 'false exprstring))
          ((eq t result) (message "%S <= `%s'" 'true exprstring))
          (t (message "%S <= `%s'" result exprstring)))

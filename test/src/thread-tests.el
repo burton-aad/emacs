@@ -1,6 +1,6 @@
 ;;; threads.el --- tests for threads.
 
-;; Copyright (C) 2012-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2012-2019 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -19,6 +19,8 @@
 
 ;;; Code:
 
+(require 'thread)
+
 ;; Declare the functions in case Emacs has been configured --without-threads.
 (declare-function all-threads "thread.c" ())
 (declare-function condition-mutex "thread.c" (cond))
@@ -32,7 +34,7 @@
 (declare-function mutex-lock "thread.c" (mutex))
 (declare-function mutex-unlock "thread.c" (mutex))
 (declare-function thread--blocker "thread.c" (thread))
-(declare-function thread-alive-p "thread.c" (thread))
+(declare-function thread-live-p "thread.c" (thread))
 (declare-function thread-join "thread.c" (thread))
 (declare-function thread-last-error "thread.c" (&optional cleanup))
 (declare-function thread-name "thread.c" (thread))
@@ -61,11 +63,11 @@
   (should
    (string= "hi bob" (thread-name (make-thread #'ignore "hi bob")))))
 
-(ert-deftest threads-alive ()
+(ert-deftest threads-live ()
   "Test for thread liveness."
   (skip-unless (featurep 'threads))
   (should
-   (thread-alive-p (make-thread #'ignore))))
+   (thread-live-p (make-thread #'ignore))))
 
 (ert-deftest threads-all-threads ()
   "Simple test for all-threads."
@@ -100,14 +102,23 @@
    (progn
      (setq threads-test-global nil)
      (let ((thread (make-thread #'threads-test-thread1)))
-       (thread-join thread)
-       (and threads-test-global
-	    (not (thread-alive-p thread)))))))
+       (and (= (thread-join thread) 23)
+            (= threads-test-global 23)
+            (not (thread-live-p thread)))))))
 
 (ert-deftest threads-join-self ()
   "Cannot `thread-join' the current thread."
   (skip-unless (featurep 'threads))
   (should-error (thread-join (current-thread))))
+
+(ert-deftest threads-join-error ()
+  "Test of error signalling from `thread-join'."
+  :tags '(:unstable)
+  (skip-unless (featurep 'threads))
+  (let ((thread (make-thread #'threads-call-error)))
+    (while (thread-live-p thread)
+      (thread-yield))
+    (should-error (thread-join thread))))
 
 (defvar threads-test-binding nil)
 
@@ -197,7 +208,7 @@
 (ert-deftest threads-mutex-signal ()
   "Test signaling a blocked thread."
   (skip-unless (featurep 'threads))
-  (should
+  (should-error
    (progn
      (setq threads-mutex (make-mutex))
      (setq threads-mutex-key nil)
@@ -206,8 +217,10 @@
        (while (not threads-mutex-key)
 	 (thread-yield))
        (thread-signal thr 'quit nil)
-       (thread-join thr))
-     t)))
+       ;; `quit' is not catched by `should-error'.  We must indicate it.
+       (condition-case nil
+           (thread-join thr)
+         (quit (signal 'error nil)))))))
 
 (defun threads-test-io-switch ()
   (setq threads-test-global 23))
@@ -277,7 +290,7 @@
   (let (th1 th2)
     (setq th1 (make-thread #'threads-call-error "call-error"))
     (should (threadp th1))
-    (while (thread-alive-p th1)
+    (while (thread-live-p th1)
       (thread-yield))
     (should (equal (thread-last-error)
                    '(error "Error is called")))
@@ -306,8 +319,27 @@
                           (while t (thread-yield))))))
     (thread-signal thread 'error nil)
     (sit-for 1)
-    (should-not (thread-alive-p thread))
+    (should-not (thread-live-p thread))
     (should (equal (thread-last-error) '(error)))))
+
+(ert-deftest threads-signal-main-thread ()
+  "Test signaling the main thread."
+  (skip-unless (featurep 'threads))
+  ;; We cannot use `ert-with-message-capture', because threads do not
+  ;; know let-bound variables.
+  (with-current-buffer "*Messages*"
+    (let (buffer-read-only)
+      (erase-buffer))
+    (let ((thread
+           (make-thread #'(lambda () (thread-signal main-thread 'error nil)))))
+      (while (thread-live-p thread)
+        (thread-yield))
+      (read-event nil nil 0.1)
+      ;; No error has been raised, which is part of the test.
+      (should
+       (string-match
+        (format-message "Error %s: (error nil)" thread)
+        (buffer-string ))))))
 
 (defvar threads-condvar nil)
 
@@ -332,7 +364,7 @@
     (setq new-thread (make-thread #'threads-test-condvar-wait))
 
     ;; Make sure new-thread is alive.
-    (should (thread-alive-p new-thread))
+    (should (thread-live-p new-thread))
     (should (= (length (all-threads)) 2))
     ;; Wait for new-thread to become blocked on the condvar.
     (while (not (eq (thread--blocker new-thread) threads-condvar))
@@ -345,7 +377,7 @@
     (sleep-for 0.1)
     ;; Make sure the thread is still there.  This used to fail due to
     ;; a bug in thread.c:condition_wait_callback.
-    (should (thread-alive-p new-thread))
+    (should (thread-live-p new-thread))
     (should (= (length (all-threads)) 2))
     (should (eq (thread--blocker new-thread) threads-condvar))
 
@@ -355,5 +387,9 @@
     ;; Make sure the thread died.
     (should (= (length (all-threads)) 1))
     (should (equal (thread-last-error) '(error "Die, die, die!")))))
+
+(ert-deftest threads-test-bug33073 ()
+  (let ((th (make-thread 'ignore)))
+    (should-not (equal th main-thread))))
 
 ;;; threads.el ends here

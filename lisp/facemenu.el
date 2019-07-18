@@ -1,6 +1,6 @@
 ;;; facemenu.el --- create a face menu for interactively adding fonts to text
 
-;; Copyright (C) 1994-1996, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1994-1996, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Boris Goldowsky <boris@gnu.org>
 ;; Keywords: faces
@@ -638,7 +638,7 @@ color.  The function should accept a single argument, the color name."
 	(insert " ")
 	(insert (propertize
 		 (apply 'format "#%02x%02x%02x"
-			(mapcar (lambda (c) (lsh c -8))
+			(mapcar (lambda (c) (ash c -8))
 				color-values))
 		 'mouse-face 'highlight
 		 'help-echo

@@ -1,6 +1,6 @@
 /* Record indices of function doc strings stored in a file. -*- coding: utf-8 -*-
 
-Copyright (C) 1985-1986, 1993-1995, 1997-2018 Free Software Foundation,
+Copyright (C) 1985-1986, 1993-1995, 1997-2019 Free Software Foundation,
 Inc.
 
 This file is part of GNU Emacs.
@@ -89,7 +89,7 @@ get_doc_string (Lisp_Object filepos, bool unibyte, bool definition)
   ptrdiff_t count = SPECPDL_INDEX ();
   USE_SAFE_ALLOCA;
 
-  if (INTEGERP (filepos))
+  if (FIXNUMP (filepos))
     {
       file = Vdoc_file_name;
       pos = filepos;
@@ -102,7 +102,7 @@ get_doc_string (Lisp_Object filepos, bool unibyte, bool definition)
   else
     return Qnil;
 
-  position = eabs (XINT (pos));
+  position = eabs (XFIXNUM (pos));
 
   if (!STRINGP (Vdoc_directory))
     return Qnil;
@@ -118,17 +118,15 @@ get_doc_string (Lisp_Object filepos, bool unibyte, bool definition)
   Lisp_Object docdir
     = NILP (tem) ? ENCODE_FILE (Vdoc_directory) : empty_unibyte_string;
   ptrdiff_t docdir_sizemax = SBYTES (docdir) + 1;
-#ifndef CANNOT_DUMP
-  docdir_sizemax = max (docdir_sizemax, sizeof sibling_etc);
-#endif
+  if (will_dump_p ())
+    docdir_sizemax = max (docdir_sizemax, sizeof sibling_etc);
   name = SAFE_ALLOCA (docdir_sizemax + SBYTES (file));
   lispstpcpy (lispstpcpy (name, docdir), file);
 
   fd = emacs_open (name, O_RDONLY, 0);
   if (fd < 0)
     {
-#ifndef CANNOT_DUMP
-      if (!NILP (Vpurify_flag))
+      if (will_dump_p ())
 	{
 	  /* Preparing to dump; DOC file is probably not installed.
 	     So check in ../etc.  */
@@ -136,7 +134,6 @@ get_doc_string (Lisp_Object filepos, bool unibyte, bool definition)
 
 	  fd = emacs_open (name, O_RDONLY, 0);
 	}
-#endif
       if (fd < 0)
 	{
 	  if (errno == EMFILE || errno == ENFILE)
@@ -236,7 +233,7 @@ get_doc_string (Lisp_Object filepos, bool unibyte, bool definition)
     }
 
   /* Scan the text and perform quoting with ^A (char code 1).
-     ^A^A becomes ^A, ^A0 becomes a null char, and ^A_ becomes a ^_.  */
+     ^A^A becomes ^A, ^A0 becomes a NUL char, and ^A_ becomes a ^_.  */
   from = get_doc_string_buffer + offset;
   to = get_doc_string_buffer + offset;
   while (from != p)
@@ -305,7 +302,7 @@ reread_doc_file (Lisp_Object file)
   if (NILP (file))
     Fsnarf_documentation (Vdoc_file_name);
   else
-    Fload (file, Qt, Qt, Qt, Qnil);
+    save_match_data_load (file, Qt, Qt, Qt, Qnil);
 
   return 1;
 }
@@ -339,9 +336,11 @@ string is passed through `substitute-command-keys'.  */)
   if (CONSP (fun) && EQ (XCAR (fun), Qmacro))
     fun = XCDR (fun);
   if (SUBRP (fun))
-    doc = make_number (XSUBR (fun)->doc);
+    doc = make_fixnum (XSUBR (fun)->doc);
+#ifdef HAVE_MODULES
   else if (MODULE_FUNCTIONP (fun))
-    doc = XMODULE_FUNCTION (fun)->documentation;
+    doc = module_function_documentation (XMODULE_FUNCTION (fun));
+#endif
   else if (COMPILEDP (fun))
     {
       if (PVSIZE (fun) <= COMPILED_DOC_STRING)
@@ -351,7 +350,7 @@ string is passed through `substitute-command-keys'.  */)
 	  Lisp_Object tem = AREF (fun, COMPILED_DOC_STRING);
 	  if (STRINGP (tem))
 	    doc = tem;
-	  else if (NATNUMP (tem) || CONSP (tem))
+	  else if (FIXNATP (tem) || CONSP (tem))
 	    doc = tem;
 	  else
 	    return Qnil;
@@ -378,7 +377,7 @@ string is passed through `substitute-command-keys'.  */)
 	    doc = tem;
 	  /* Handle a doc reference--but these never come last
 	     in the function body, so reject them if they are last.  */
-	  else if ((NATNUMP (tem) || (CONSP (tem) && INTEGERP (XCDR (tem))))
+	  else if ((FIXNATP (tem) || (CONSP (tem) && FIXNUMP (XCDR (tem))))
 		   && !NILP (XCDR (tem1)))
 	    doc = tem;
 	  else
@@ -395,9 +394,9 @@ string is passed through `substitute-command-keys'.  */)
 
   /* If DOC is 0, it's typically because of a dumped file missing
      from the DOC file (bug in src/Makefile.in).  */
-  if (EQ (doc, make_number (0)))
+  if (EQ (doc, make_fixnum (0)))
     doc = Qnil;
-  if (INTEGERP (doc) || CONSP (doc))
+  if (FIXNUMP (doc) || CONSP (doc))
     {
       Lisp_Object tem;
       tem = get_doc_string (doc, 0, 0);
@@ -437,9 +436,23 @@ aren't strings.  */)
  documentation_property:
 
   tem = Fget (symbol, prop);
-  if (EQ (tem, make_number (0)))
+
+  /* If we don't have any documentation for this symbol (and we're asking for
+     the variable documentation), try to see whether it's an indirect variable
+     and get the documentation from there instead. */
+  if (EQ (prop, Qvariable_documentation)
+      && NILP (tem))
+    {
+      Lisp_Object indirect = Findirect_variable (symbol);
+      if (!NILP (indirect))
+	tem = Fget (indirect, prop);
+    }
+
+  if (EQ (tem, make_fixnum (0)))
     tem = Qnil;
-  if (INTEGERP (tem) || (CONSP (tem) && INTEGERP (XCDR (tem))))
+
+  /* See if we want to look for the string in the DOC file. */
+  if (FIXNUMP (tem) || (CONSP (tem) && FIXNUMP (XCDR (tem))))
     {
       Lisp_Object doc = tem;
       tem = get_doc_string (tem, 0, 0);
@@ -486,10 +499,10 @@ store_function_docstring (Lisp_Object obj, EMACS_INT offset)
 	  || (EQ (tem, Qclosure) && (fun = XCDR (fun), 1)))
 	{
 	  tem = Fcdr (Fcdr (fun));
-	  if (CONSP (tem) && INTEGERP (XCAR (tem)))
+	  if (CONSP (tem) && FIXNUMP (XCAR (tem)))
 	    /* FIXME: This modifies typically pure hash-cons'd data, so its
 	       correctness is quite delicate.  */
-	    XSETCAR (tem, make_number (offset));
+	    XSETCAR (tem, make_fixnum (offset));
 	}
     }
 
@@ -503,7 +516,7 @@ store_function_docstring (Lisp_Object obj, EMACS_INT offset)
       /* This bytecode object must have a slot for the
 	 docstring, since we've found a docstring for it.  */
       if (PVSIZE (fun) > COMPILED_DOC_STRING)
-	ASET (fun, COMPILED_DOC_STRING, make_number (offset));
+	ASET (fun, COMPILED_DOC_STRING, make_fixnum (offset));
       else
 	{
 	  AUTO_STRING (format, "No docstring slot for %s");
@@ -545,12 +558,7 @@ the same file name is found in the `doc-directory'.  */)
 
   CHECK_STRING (filename);
 
-  if
-#ifndef CANNOT_DUMP
-    (!NILP (Vpurify_flag))
-#else /* CANNOT_DUMP */
-      (0)
-#endif /* CANNOT_DUMP */
+  if (will_dump_p ())
     {
       dirname = sibling_etc;
       dirlen = sizeof sibling_etc - 1;
@@ -635,7 +643,7 @@ the same file name is found in the `doc-directory'.  */)
                       || !NILP (Fmemq (sym, delayed_init)))
                       && strncmp (end, "\nSKIP", 5))
                     Fput (sym, Qvariable_documentation,
-                          make_number ((pos + end + 1 - buf)
+                          make_fixnum ((pos + end + 1 - buf)
                                        * (end[1] == '*' ? -1 : 1)));
 		}
 
@@ -671,7 +679,7 @@ default_to_grave_quoting_style (void)
   Lisp_Object dv = DISP_CHAR_VECTOR (XCHAR_TABLE (Vstandard_display_table),
 				     LEFT_SINGLE_QUOTATION_MARK);
   return (VECTORP (dv) && ASIZE (dv) == 1
-	  && EQ (AREF (dv, 0), make_number ('`')));
+	  && EQ (AREF (dv, 0), make_fixnum ('`')));
 }
 
 /* Return the current effective text quoting style.  */

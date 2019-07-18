@@ -1,6 +1,6 @@
 ;;; semantic/lex.el --- Lexical Analyzer builder  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1999-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 
@@ -596,7 +596,7 @@ may need to be overridden for some special languages.")
             "\\|"
             "\\<[0-9]+[eE][-+]?[0-9]+[fFdD]?\\>"
             "\\|"
-            "\\<0[xX][0-9a-fA-F]+[lL]?\\>"
+            "\\<0[xX][[:xdigit:]]+[lL]?\\>"
             "\\|"
             "\\<[0-9]+[lLfFdD]?\\>"
             "\\)"
@@ -609,7 +609,7 @@ DECIMAL_LITERAL:
     [1-9][0-9]*
   ;
 HEX_LITERAL:
-    0[xX][0-9a-fA-F]+
+    0[xX][[:xdigit:]]+
   ;
 OCTAL_LITERAL:
     0[0-7]*
@@ -686,9 +686,9 @@ displayed in the minibuffer.  Press SPC to move to the next lexical token."
   "Highlight the lexical TOKEN.
 TOKEN is a lexical token with a START And END position.
 Return the overlay."
-  (let ((o (semantic-make-overlay (semantic-lex-token-start token)
-				  (semantic-lex-token-end token))))
-    (semantic-overlay-put o 'face 'highlight)
+  (let ((o (make-overlay (semantic-lex-token-start token)
+			 (semantic-lex-token-end token))))
+    (overlay-put o 'face 'highlight)
     o))
 
 ;;; Lexical analyzer creation
@@ -752,11 +752,11 @@ a LOCAL option.")
 	  (progn
 	    (when token
 	      (setq o (semantic-lex-highlight-token token)))
-	    (semantic-read-event
+	    (read-event
 	     (format "%S :: Depth: %d :: SPC - continue" token semantic-lex-current-depth))
 	    )
 	(when o
-	  (semantic-overlay-delete o))))))
+	  (delete-overlay o))))))
 
 (defmacro define-lex (name doc &rest analyzers)
   "Create a new lexical analyzer with NAME.

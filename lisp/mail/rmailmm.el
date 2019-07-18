@@ -1,6 +1,6 @@
 ;;; rmailmm.el --- MIME decoding and display stuff for RMAIL
 
-;; Copyright (C) 2006-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2006-2019 Free Software Foundation, Inc.
 
 ;; Author: Alexander Pohoyda
 ;;	Alex Schroeder
@@ -836,7 +836,8 @@ directly."
 	      size (car bulk-data))
       (if (stringp (aref body 0))
 	  (setq data (aref body 0))
-	(setq data (string-as-unibyte (buffer-string)))
+	(setq data (buffer-string))
+        (cl-assert (not (multibyte-string-p data)))
 	(aset body 0 data)
 	(rmail-mime-set-bulk-data entity)
 	(delete-region (point-min) (point-max)))

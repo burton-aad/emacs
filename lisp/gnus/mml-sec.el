@@ -1,6 +1,6 @@
 ;;; mml-sec.el --- A package with security functions for MML documents
 
-;; Copyright (C) 2000-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2019 Free Software Foundation, Inc.
 
 ;; Author: Simon Josefsson <simon@josefsson.org>
 
@@ -497,7 +497,8 @@ https://debbugs.gnu.org/cgi/bugreport.cgi?bug=18718"
   'mml2015-sign-with-sender 'mml-secure-openpgp-sign-with-sender "25.1")
 ;mml1991-sign-with-sender did never exist.
 (defcustom mml-secure-openpgp-sign-with-sender nil
-  "If t, use message sender to find an OpenPGP key to sign with."
+  "If t, use message sender to find an OpenPGP key to sign with.
+Also use message's sender with GnuPG's --sender option."
   :group 'mime-security
   :type 'boolean)
 
@@ -659,6 +660,8 @@ The passphrase is read and cached."
     (catch 'break
       (dolist (uid uids nil)
 	(if (and (stringp (epg-user-id-string uid))
+                 (car (mail-header-parse-address
+                       (epg-user-id-string uid)))
 		 (equal (downcase (car (mail-header-parse-address
 					(epg-user-id-string uid))))
 			(downcase (car (mail-header-parse-address
@@ -723,7 +726,7 @@ Otherwise, NAME is treated as user ID, for which no keys are returned if it
 is expired or revoked.
 If optional JUSTONE is not nil, return the first key instead of a list."
   (let* ((keys (epg-list-keys context name))
-	 (iskeyid (string-match "\\(0x\\)?\\([0-9a-fA-F]\\{8,\\}\\)" name))
+	 (iskeyid (string-match "\\(0x\\)?\\([[:xdigit:]]\\{8,\\}\\)" name))
 	 (fingerprint (match-string 2 name))
 	 result)
     (when (and iskeyid (>= (length keys) 2))
@@ -911,7 +914,9 @@ If no one is selected, symmetric encryption will be performed.  "
 	 cipher signers)
     (when sign
       (setq signers (mml-secure-signers context signer-names))
-      (setf (epg-context-signers context) signers))
+      (setf (epg-context-signers context) signers)
+      (when mml-secure-openpgp-sign-with-sender
+        (setf (epg-context-sender context) sender)))
     (when (eq 'OpenPGP protocol)
       (setf (epg-context-armor context) t)
       (setf (epg-context-textmode context) t))
@@ -942,6 +947,8 @@ If no one is selected, symmetric encryption will be performed.  "
       (setf (epg-context-armor context) t)
       (setf (epg-context-textmode context) t))
     (setf (epg-context-signers context) signers)
+    (when mml-secure-openpgp-sign-with-sender
+      (setf (epg-context-sender context) sender))
     (when (mml-secure-cache-passphrase-p protocol)
       (epg-context-set-passphrase-callback
        context

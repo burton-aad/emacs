@@ -1,6 +1,6 @@
 ;;; byte-opt.el --- the optimization passes of the emacs-lisp byte compiler -*- lexical-binding: t -*-
 
-;; Copyright (C) 1991, 1994, 2000-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1991, 1994, 2000-2019 Free Software Foundation, Inc.
 
 ;; Author: Jamie Zawinski <jwz@lucid.com>
 ;;	Hallvard Furuseth <hbf@ulrik.uio.no>
@@ -255,7 +255,7 @@
       (setq fn (or (symbol-function name)
                    (cdr (assq name byte-compile-function-environment)))))
     (pcase fn
-      (`nil
+      ('nil
        (byte-compile-warn "attempt to inline `%s' before it was defined"
                           name)
        form)
@@ -436,11 +436,6 @@
 		     (cons (byte-optimize-form (nth 1 form) for-effect)
 			   (byte-optimize-body (cdr (cdr form)) t)))
 	     (byte-optimize-form (nth 1 form) for-effect)))
-	  ((eq fn 'prog2)
-	   (cons 'prog2
-	     (cons (byte-optimize-form (nth 1 form) t)
-	       (cons (byte-optimize-form (nth 2 form) for-effect)
-		     (byte-optimize-body (cdr (cdr (cdr form))) t)))))
 
 	  ((memq fn '(save-excursion save-restriction save-current-buffer))
 	   ;; those subrs which have an implicit progn; it's not quite good
@@ -635,7 +630,7 @@
     (setq form (car (last (cdr form)))))
   (cond ((consp form)
          (pcase (car form)
-           (`quote (cadr form))
+           ('quote (cadr form))
            ;; Can't use recursion in a defsubst.
            ;; (`progn (byte-compile-trueconstp (car (last (cdr form)))))
            ))
@@ -649,7 +644,7 @@
     (setq form (car (last (cdr form)))))
   (cond ((consp form)
          (pcase (car form)
-           (`quote (null (cadr form)))
+           ('quote (null (cadr form)))
            ;; Can't use recursion in a defsubst.
            ;; (`progn (byte-compile-nilconstp (car (last (cdr form)))))
            ))
@@ -839,6 +834,36 @@
 		       (if (= 1 (length (cdr form))) "" "s"))
     form))
 
+(defun byte-optimize--constant-symbol-p (expr)
+  "Whether EXPR is a constant symbol."
+  (and (macroexp-const-p expr) (symbolp (eval expr))))
+
+(defun byte-optimize-equal (form)
+  ;; Replace `equal' or `eql' with `eq' if at least one arg is a symbol.
+  (byte-optimize-binary-predicate
+   (if (= (length (cdr form)) 2)
+       (if (or (byte-optimize--constant-symbol-p (nth 1 form))
+               (byte-optimize--constant-symbol-p (nth 2 form)))
+           (cons 'eq (cdr form))
+         form)
+     ;; Arity errors reported elsewhere.
+     form)))
+
+(defun byte-optimize-member (form)
+  ;; Replace `member' or `memql' with `memq' if the first arg is a symbol,
+  ;; or the second arg is a list of symbols.
+  (if (= (length (cdr form)) 2)
+      (if (or (byte-optimize--constant-symbol-p (nth 1 form))
+              (let ((arg2 (nth 2 form)))
+                (and (macroexp-const-p arg2)
+                     (let ((listval (eval arg2)))
+                       (and (listp listval)
+                            (not (memq nil (mapcar #'symbolp listval))))))))
+          (cons 'memq (cdr form))
+        form)
+    ;; Arity errors reported elsewhere.
+    form))
+
 (defun byte-optimize-memq (form)
   ;; (memq foo '(bar)) => (and (eq foo 'bar) '(bar))
   (if (/= (length (cdr form)) 2)
@@ -855,8 +880,37 @@
                           ',list)))))
     (byte-optimize-predicate form)))
 
+(defun byte-optimize-concat (form)
+  "Merge adjacent constant arguments to `concat'."
+  (let ((args (cdr form))
+        (newargs nil))
+    (while args
+      (let ((strings nil)
+            val)
+        (while (and args (macroexp-const-p (car args))
+                    (progn
+                      (setq val (eval (car args)))
+                      (and (or (stringp val)
+                               (and (or (listp val) (vectorp val))
+                                    (not (memq nil
+                                               (mapcar #'characterp val))))))))
+          (push val strings)
+          (setq args (cdr args)))
+        (when strings
+          (let ((s (apply #'concat (nreverse strings))))
+            (when (not (zerop (length s)))
+              (push s newargs)))))
+      (when args
+        (push (car args) newargs)
+        (setq args (cdr args))))
+    (if (= (length newargs) (length (cdr form)))
+        form          ; No improvement.
+      (cons 'concat (nreverse newargs)))))
+
 (put 'identity 'byte-optimizer 'byte-optimize-identity)
 (put 'memq 'byte-optimizer 'byte-optimize-memq)
+(put 'memql  'byte-optimizer 'byte-optimize-member)
+(put 'member 'byte-optimizer 'byte-optimize-member)
 
 (put '+   'byte-optimizer 'byte-optimize-plus)
 (put '*   'byte-optimizer 'byte-optimize-multiply)
@@ -867,7 +921,8 @@
 
 (put '=   'byte-optimizer 'byte-optimize-binary-predicate)
 (put 'eq  'byte-optimizer 'byte-optimize-binary-predicate)
-(put 'equal   'byte-optimizer 'byte-optimize-binary-predicate)
+(put 'eql   'byte-optimizer 'byte-optimize-equal)
+(put 'equal 'byte-optimizer 'byte-optimize-equal)
 (put 'string= 'byte-optimizer 'byte-optimize-binary-predicate)
 (put 'string-equal 'byte-optimizer 'byte-optimize-binary-predicate)
 
@@ -884,7 +939,8 @@
 (put 'symbolp 'byte-optimizer 'byte-optimize-predicate)
 (put 'stringp 'byte-optimizer 'byte-optimize-predicate)
 (put 'string< 'byte-optimizer 'byte-optimize-predicate)
-(put 'string-lessp 'byte-optimizer 'byte-optimize-predicate)
+(put 'string-lessp  'byte-optimizer 'byte-optimize-predicate)
+(put 'proper-list-p 'byte-optimizer 'byte-optimize-predicate)
 
 (put 'logand 'byte-optimizer 'byte-optimize-predicate)
 (put 'logior 'byte-optimizer 'byte-optimize-predicate)
@@ -895,6 +951,8 @@
 (put 'cdr 'byte-optimizer 'byte-optimize-predicate)
 (put 'car-safe 'byte-optimizer 'byte-optimize-predicate)
 (put 'cdr-safe 'byte-optimizer 'byte-optimize-predicate)
+
+(put 'concat 'byte-optimizer 'byte-optimize-concat)
 
 ;; I'm not convinced that this is necessary.  Doesn't the optimizer loop
 ;; take care of this? - Jamie
@@ -1195,14 +1253,14 @@
 	 window-width zerop))
       (side-effect-and-error-free-fns
        '(arrayp atom
-	 bobp bolp bool-vector-p
+	 bignump bobp bolp bool-vector-p
 	 buffer-end buffer-list buffer-size buffer-string bufferp
 	 car-safe case-table-p cdr-safe char-or-string-p characterp
 	 charsetp commandp cons consp
 	 current-buffer current-global-map current-indentation
 	 current-local-map current-minor-mode-maps current-time
 	 eobp eolp eq equal eventp
-	 floatp following-char framep
+	 fixnump floatp following-char framep
 	 get-largest-window get-lru-window
 	 hash-table-p
 	 identity ignore integerp integer-or-marker-p interactive-p
@@ -1283,7 +1341,7 @@
 		  (setq bytedecomp-ptr (1+ bytedecomp-ptr))
 		  (+ (aref bytes bytedecomp-ptr)
 		     (progn (setq bytedecomp-ptr (1+ bytedecomp-ptr))
-			    (lsh (aref bytes bytedecomp-ptr) 8))))
+			    (ash (aref bytes bytedecomp-ptr) 8))))
 		 (t tem))))		;Offset was in opcode.
 	((>= bytedecomp-op byte-constant)
 	 (prog1 (- bytedecomp-op byte-constant)	;Offset in opcode.
@@ -1297,7 +1355,7 @@
 	 (setq bytedecomp-ptr (1+ bytedecomp-ptr))
 	 (+ (aref bytes bytedecomp-ptr)
 	    (progn (setq bytedecomp-ptr (1+ bytedecomp-ptr))
-		   (lsh (aref bytes bytedecomp-ptr) 8))))
+		   (ash (aref bytes bytedecomp-ptr) 8))))
 	((and (>= bytedecomp-op byte-listN)
 	      (<= bytedecomp-op byte-discardN))
 	 (setq bytedecomp-ptr (1+ bytedecomp-ptr)) ;Offset in next byte.
@@ -1380,11 +1438,15 @@
                         do (setq last-constant (copy-hash-table e))
                         and return nil)
                ;; Replace all addresses with TAGs.
-               (maphash #'(lambda (value tag)
-                            (let (newtag)
-                              (setq newtag (byte-compile-make-tag))
-                              (push (cons tag newtag) tags)
-                              (puthash value newtag last-constant)))
+               (maphash #'(lambda (value offset)
+                            (let ((match (assq offset tags)))
+                              (puthash value
+                                       (if match
+                                           (cdr match)
+                                         (let ((tag (byte-compile-make-tag)))
+                                           (push (cons offset tag) tags)
+                                           tag))
+                                       last-constant)))
                         last-constant)
                ;; Replace the hash table referenced in the lapcode with our
                ;; modified one.
@@ -1726,13 +1788,10 @@ If FOR-EFFECT is non-nil, the return value is assumed to be of no importance."
 		     keep-going t)
                ;; replace references to tag in jump tables, if any
                (dolist (table byte-compile-jump-tables)
-                 (catch 'break
                    (maphash #'(lambda (value tag)
                                 (when (equal tag lap0)
-                                  ;; each tag occurs only once in the jump table
-                                  (puthash value lap1 table)
-                                  (throw 'break nil)))
-                            table))))
+                                  (puthash value lap1 table)))
+                            table)))
 	      ;;
 	      ;; unused-TAG: --> <deleted>
 	      ;;

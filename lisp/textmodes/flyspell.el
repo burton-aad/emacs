@@ -1,6 +1,6 @@
 ;;; flyspell.el --- On-the-fly spell checker  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1998, 2000-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1998, 2000-2019 Free Software Foundation, Inc.
 
 ;; Author: Manuel Serrano <Manuel.Serrano@sophia.inria.fr>
 ;; Maintainer: emacs-devel@gnu.org
@@ -67,6 +67,12 @@ Detection of repeated words is not implemented in
 \"large\" regions; see variable `flyspell-large-region'."
   :group 'flyspell
   :type 'boolean)
+
+(defcustom flyspell-case-fold-duplications t
+  "Non-nil means Flyspell matches duplicate words case-insensitively."
+  :group 'flyspell
+  :type 'boolean
+  :version "27.1")
 
 (defcustom flyspell-mark-duplications-exceptions
   '((nil . ("that" "had")) ; Common defaults for English.
@@ -138,7 +144,9 @@ This variable specifies how far to search to find such a duplicate.
   "Non-nil means misspelled words remain highlighted until corrected.
 If this variable is nil, only the most recently detected misspelled word
 is highlighted, and the highlight is turned off as soon as point moves
-off the misspelled word."
+off the misspelled word.
+
+Make sure this variable is non-nil if you use `flyspell-region'."
   :group 'flyspell
   :type 'boolean)
 
@@ -415,9 +423,10 @@ like <img alt=\"Some thing.\">."
 
 (defun flyspell-generic-progmode-verify ()
   "Used for `flyspell-generic-check-word-predicate' in programming modes."
-  ;; (point) is next char after the word. Must check one char before.
-  (let ((f (get-text-property (- (point) 1) 'face)))
-    (memq f flyspell-prog-text-faces)))
+  (unless (eql (point) (point-min))
+    ;; (point) is next char after the word. Must check one char before.
+    (let ((f (get-text-property (1- (point)) 'face)))
+      (memq f flyspell-prog-text-faces))))
 
 ;; Records the binding of M-TAB in effect before flyspell was activated.
 (defvar flyspell--prev-meta-tab-binding)
@@ -921,7 +930,7 @@ Mostly we check word delimiters."
                           (or (string= "" ispell-otherchars)
                               (not (looking-at ispell-otherchars)))
                           (or flyspell-consider-dash-as-word-delimiter-flag
-                              (not (looking-at "\\-")))
+                              (not (looking-at "-")))
                           2)))))
        (format "  because    : %S\n"
                (cond
@@ -939,7 +948,7 @@ Mostly we check word delimiters."
                             (or (string= "" ispell-otherchars)
                                 (not (looking-at ispell-otherchars)))
                             (or flyspell-consider-dash-as-word-delimiter-flag
-                                (not (looking-at "\\-")))))))
+                                (not (looking-at "-")))))))
                  ;; Yes because we have reached or typed a word delimiter.
                  'separator)
                 ((not (integerp flyspell-delay))
@@ -1152,7 +1161,8 @@ spell-check."
 			      (- (save-excursion
                                    (skip-chars-backward " \t\n\f")))))
 			  (p (when (>= bound (point-min))
-			       (flyspell-word-search-backward word bound t))))
+			       (flyspell-word-search-backward
+                                word bound flyspell-case-fold-duplications))))
 		     (and p (/= p start)))))
 	    ;; yes, this is a doublon
 	    (flyspell-highlight-incorrect-region start end 'doublon)
@@ -1372,7 +1382,10 @@ language."
 ;;*    flyspell-small-region ...                                        */
 ;;*---------------------------------------------------------------------*/
 (defun flyspell-small-region (beg end)
-  "Flyspell text between BEG and END."
+  "Flyspell text between BEG and END.
+
+This function is intended to work on small regions, as
+determined by `flyspell-large-region'."
   (save-excursion
     (if (> beg end)
 	(let ((old beg))
@@ -1419,10 +1432,20 @@ language."
 The list of incorrect words should be in `flyspell-external-ispell-buffer'.
 \(We finish by killing that buffer and setting the variable to nil.)
 The buffer to mark them in is `flyspell-large-region-buffer'."
-  (let (words-not-found
-	(ispell-otherchars (ispell-get-otherchars))
-	(buffer-scan-pos flyspell-large-region-beg)
-	case-fold-search)
+  (let* (words-not-found
+         (flyspell-casechars (flyspell-get-casechars))
+         (ispell-otherchars (ispell-get-otherchars))
+         (ispell-many-otherchars-p (ispell-get-many-otherchars-p))
+         (word-chars (concat flyspell-casechars
+                             "+\\("
+                             (if (not (string= "" ispell-otherchars))
+                                 (concat ispell-otherchars "?"))
+                             flyspell-casechars
+                             "+\\)"
+                             (if ispell-many-otherchars-p
+                                 "*" "?")))
+         (buffer-scan-pos flyspell-large-region-beg)
+         case-fold-search)
     (with-current-buffer flyspell-external-ispell-buffer
       (goto-char (point-min))
       ;; Loop over incorrect words, in the order they were reported,
@@ -1452,11 +1475,18 @@ The buffer to mark them in is `flyspell-large-region-buffer'."
 			      ;; Move back into the match
 			      ;; so flyspell-get-word will find it.
 			      (forward-char -1)
-			      (flyspell-get-word)))
+                              ;; Is this a word that matches the
+                              ;; current dictionary?
+                              (if (looking-at word-chars)
+			          (flyspell-get-word))))
 			   (found (car found-list))
 			   (found-length (length found))
 			   (misspell-length (length word)))
 		      (when (or
+                             ;; Misspelled word is not from the
+                             ;; language supported by the current
+                             ;; dictionary.
+                             (null found)
 			     ;; Size matches, we really found it.
 			     (= found-length misspell-length)
 			     ;; Matches as part of a boundary-char separated
@@ -1478,13 +1508,21 @@ The buffer to mark them in is `flyspell-large-region-buffer'."
 			     ;; backslash) and none of the previous
 			     ;; conditions match.
 			     (and (not ispell-really-aspell)
+                                  (not ispell-really-hunspell)
+                                  (not ispell-really-enchant)
 				  (save-excursion
 				    (goto-char (- (nth 1 found-list) 1))
 				    (if (looking-at "[\\]" )
 					t
 				      nil))))
 			(setq keep nil)
-			(flyspell-word nil t)
+                        ;; Don't try spell-checking words whose
+                        ;; characters don't match CASECHARS, because
+                        ;; flyspell-word will then consider as
+                        ;; misspelling the preceding word that matches
+                        ;; CASECHARS.
+                        (or (null found)
+			    (flyspell-word nil t))
 			;; Search for next misspelled word will begin from
 			;; end of last validated match.
 			(setq buffer-scan-pos (point))))
@@ -1643,7 +1681,10 @@ The buffer to mark them in is `flyspell-large-region-buffer'."
 ;;*---------------------------------------------------------------------*/
 ;;;###autoload
 (defun flyspell-region (beg end)
-  "Flyspell text between BEG and END."
+  "Flyspell text between BEG and END.
+
+Make sure `flyspell-mode' is turned on if you want the highlight
+of a misspelled word removed when you've corrected it."
   (interactive "r")
   (ispell-set-spellchecker-params)  ; Initialize variables and dicts alists
   (if (= beg end)

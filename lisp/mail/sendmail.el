@@ -1,6 +1,6 @@
 ;;; sendmail.el --- mail sending commands for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-1986, 1992-1996, 1998, 2000-2018 Free Software
+;; Copyright (C) 1985-1986, 1992-1996, 1998, 2000-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -150,7 +150,7 @@ Otherwise, let mailer send back a message to report errors."
       'smtpmail-send-it 'sendmail-query-once)
   "Function to call to send the current buffer as mail.
 The headers should be delimited by a line which is
-not a valid RFC822 header or continuation line,
+not a valid RFC 822 (or later) header or continuation line,
 that matches the variable `mail-header-separator'.
 This is used by the default mail-sending commands.  See also
 `message-send-mail-function' for use with the Message package."
@@ -370,6 +370,7 @@ By default, this is the file specified by `mail-personal-alias-file'." t)
 ;;;###autoload
 (defcustom mail-signature t
   "Text inserted at end of mail buffer when a message is initialized.
+If nil, no signature is inserted.
 If t, it means to insert the contents of the file `mail-signature-file'.
 If a string, that string is inserted.
  (To make a proper signature, the string should begin with \\n\\n-- \\n,
@@ -561,7 +562,8 @@ This also saves the value of `send-mail-function' via Customize."
 
 (defun sendmail-sync-aliases ()
   (when mail-personal-alias-file
-    (let ((modtime (nth 5 (file-attributes mail-personal-alias-file))))
+    (let ((modtime (file-attribute-modification-time
+		    (file-attributes mail-personal-alias-file))))
       (or (equal mail-alias-modtime modtime)
 	  (setq mail-alias-modtime modtime
 		mail-aliases t)))))
@@ -907,7 +909,7 @@ the user from the mailer."
 	    (ml (when mail-mailing-lists
                 ;; The surrounding regexp assumes the use of
                 ;; `mail-strip-quoted-names' on addresses before matching
-                ;; Cannot deal with full RFC 822 freedom, but that is
+                ;; Cannot deal with full RFC 822 (or later), but that is
                 ;; unlikely to be problematic.
                 (concat "\\(?:[[:space:];,]\\|\\`\\)"
                         (regexp-opt mail-mailing-lists t)
@@ -1043,7 +1045,7 @@ This function does not perform RFC2047 encoding."
 		 (fullname-end (point-marker)))
 	     (goto-char fullname-start)
 	     ;; Look for a character that cannot appear unquoted
-	     ;; according to RFC 822.
+	     ;; according to RFC 822 (or later).
 	     (if (or (re-search-forward "[^- !#-'*+/-9=?A-Z^-~]"
 					fullname-end 1)
 		     quote-fullname)
@@ -1067,8 +1069,7 @@ This function does not perform RFC2047 encoding."
 		 (insert "\""))
 	     (let ((fullname-end (point-marker)))
 	       (goto-char fullname-start)
-	       ;; RFC 822 says \ and nonmatching parentheses
-	       ;; must be escaped in comments.
+	       ;; \ and nonmatching parentheses must be escaped in comments.
 	       ;; Escape every instance of ()\ ...
 	       (while (re-search-forward "[()\\]" fullname-end 1)
 		 (replace-match "\\\\\\&" t))
@@ -2077,9 +2078,4 @@ you can move to one of them and type C-c C-c to recover that one."
 ;; Do not add anything but external entries on this page.
 
 (provide 'sendmail)
-
-;; Local Variables:
-;; byte-compile-dynamic: t
-;; End:
-
 ;;; sendmail.el ends here

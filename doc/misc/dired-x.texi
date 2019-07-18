@@ -20,7 +20,7 @@
 @comment %**end of header (This is for running Texinfo on a region.)
 
 @copying
-Copyright @copyright{} 1994--1995, 1999, 2001--2018
+Copyright @copyright{} 1994--1995, 1999, 2001--2019
 Free Software Foundation, Inc.
 
 @quotation
@@ -321,8 +321,8 @@ Default: @code{nil}
 
 @cindex How to make omitting the default in Dired
 If non-@code{nil}, ``uninteresting'' files are not listed.
-Uninteresting files are those whose files whose names match regexp
-@code{dired-omit-files}, plus those ending with extensions in
+Uninteresting files are files whose names match regexp
+@code{dired-omit-files}, plus files whose names end with extension in
 @code{dired-omit-extensions}.  @kbd{C-x M-o} (@code{dired-omit-mode})
 toggles its value, which is buffer-local.  Put
 
@@ -521,8 +521,9 @@ where each @var{command} can either be a string or a Lisp expression
 that evaluates to a string.  If several commands are given, all of
 them will temporarily be pushed onto the history.
 
-If @samp{*} in the shell command, that means to substitute the file
-name.
+A @samp{*} in the shell command stands for the file name that matched
+@var{regexp}.  When Emacs invokes the @var{command}, it replaces each
+instance of @samp{*} with the matched file name.
 
 You can set this variable in your @file{~/.emacs}.  For example,
 to add rules for @samp{.foo} and @samp{.bar} file extensions, write
@@ -895,7 +896,7 @@ should not bind @code{dired-x-find-file-other-window} over
 @code{find-file-other-window}.  If you change this variable after
 @file{dired-x.el} is loaded then do @kbd{M-x dired-x-bind-find-file}.  The
 default value of this variable is @code{t}; by default, the binding is not
-done.  See @xref{Optional Installation File At Point}.
+done.  @xref{Optional Installation File At Point}.
 
 @item dired-x-bind-find-file
 @findex dired-x-bind-find-file
@@ -903,7 +904,7 @@ A function, which can be called interactively or in your @file{~/.emacs} file,
 that uses the value of @code{dired-x-hands-off-my-keys} to determine if
 @code{dired-x-find-file} should be bound over @code{find-file} and
 @code{dired-x-find-file-other-window} bound over
-@code{find-file-other-window}.  See @xref{Optional Installation File At Point}.
+@code{find-file-other-window}.  @xref{Optional Installation File At Point}.
 @end table
 
 @node Miscellaneous Commands

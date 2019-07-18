@@ -1,6 +1,6 @@
 ;;; gnus.el --- a newsreader for GNU Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1987-1990, 1993-1998, 2000-2018 Free Software
+;; Copyright (C) 1987-1990, 1993-1998, 2000-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Masanobu UMEDA <umerin@flab.flab.fujitsu.junet>
@@ -29,7 +29,8 @@
 
 (run-hooks 'gnus-load-hook)
 
-(eval-when-compile (require 'cl-lib))
+(eval-when-compile (require 'cl-lib)
+		   (require 'subr-x))
 (require 'wid-edit)
 (require 'mm-util)
 (require 'nnheader)
@@ -637,6 +638,12 @@ be set in `.emacs' instead."
   "Face used for low interest read articles."
   :group 'gnus-summary)
 
+;;; Base gnus-mode
+
+(define-derived-mode gnus-mode special-mode nil
+  "Base mode from which all other gnus modes derive.
+This does nothing but derive from `special-mode', and should not
+be used directly.")
 
 ;;;
 ;;; Gnus buffers
@@ -658,26 +665,15 @@ be set in `.emacs' instead."
 (defmacro gnus-kill-buffer (buffer)
   "Kill BUFFER and remove from the list of Gnus buffers."
   `(let ((buf ,buffer))
-     (when (gnus-buffer-exists-p buf)
+     (when (gnus-buffer-live-p buf)
        (kill-buffer buf)
        (gnus-prune-buffers))))
 
-(defun gnus-prune-buffers ()
-  (dolist (buf gnus-buffers)
-    (unless (buffer-live-p buf)
-      (setq gnus-buffers (delete buf gnus-buffers)))))
-
 (defun gnus-buffers ()
   "Return a list of live Gnus buffers."
-  (while (and gnus-buffers
-	      (not (buffer-name (car gnus-buffers))))
-    (pop gnus-buffers))
-  (let ((buffers gnus-buffers))
-    (while (cdr buffers)
-      (if (buffer-name (cadr buffers))
-	  (pop buffers)
-	(setcdr buffers (cddr buffers)))))
-  gnus-buffers)
+  (setq gnus-buffers (seq-filter #'buffer-live-p gnus-buffers)))
+
+(defalias 'gnus-prune-buffers #'gnus-buffers)
 
 ;;; Splash screen.
 
@@ -2447,28 +2443,37 @@ such as a mark that says whether an article is stored in the cache
 gnus-registry.el will populate this if it's loaded.")
 
 (defvar gnus-newsrc-hashtb nil
-  "Hashtable of `gnus-newsrc-alist'.")
+  "Hash table of `gnus-newsrc-alist'.")
+
+(defvar gnus-group-list nil
+  "Ordered list of group names as strings.
+This variable only exists to provide easy access to the ordering
+of `gnus-newsrc-alist'.")
 
 (defvar gnus-killed-list nil
   "List of killed newsgroups.")
 
 (defvar gnus-killed-hashtb nil
-  "Hash table equivalent of `gnus-killed-list'.")
+  "Hash table equivalent of `gnus-killed-list'.
+This is a hash table purely for the fast membership test: values
+are always t.")
 
 (defvar gnus-zombie-list nil
   "List of almost dead newsgroups.")
 
 (defvar gnus-description-hashtb nil
-  "Descriptions of newsgroups.")
+  "Hash table mapping group names to their descriptions.")
 
 (defvar gnus-list-of-killed-groups nil
   "List of newsgroups that have recently been killed by the user.")
 
 (defvar gnus-active-hashtb nil
-  "Hashtable of active articles.")
+  "Hash table mapping group names to their active entry.")
 
 (defvar gnus-moderated-hashtb nil
-  "Hashtable of moderated newsgroups.")
+  "Hash table of moderated groups.
+This is a hash table purely for the fast membership test: values
+are always t.")
 
 ;; Save window configuration.
 (defvar gnus-prev-winconf nil)
@@ -2495,12 +2500,12 @@ gnus-registry.el will populate this if it's loaded.")
      (let ((interactive (nth 1 (memq ':interactive package))))
        (mapcar
 	(lambda (function)
-	  (let (keymap)
+	  (let (type)
 	    (when (consp function)
-	      (setq keymap (car (memq 'keymap function)))
+	      (setq type (cadr function))
 	      (setq function (car function)))
 	    (unless (fboundp function)
-	      (autoload function (car package) nil interactive keymap))))
+	      (autoload function (car package) nil interactive type))))
 	(if (eq (nth 1 package) ':interactive)
 	    (nthcdr 3 package)
 	  (cdr package)))))
@@ -2764,7 +2769,7 @@ See Info node `(gnus)Formatting Variables'."
 
 (defun gnus-suppress-keymap (keymap)
   (suppress-keymap keymap)
-  (let ((keys `([delete] "\177" "\M-u"))) ;[mouse-2]
+  (let ((keys '([delete] "\177" "\M-u"))) ;[mouse-2]
     (while keys
       (define-key keymap (pop keys) 'undefined))))
 
@@ -2794,36 +2799,21 @@ See Info node `(gnus)Formatting Variables'."
 (defun gnus-header-from (header)
   (mail-header-from header))
 
-(defmacro gnus-gethash (string hashtable)
-  "Get hash value of STRING in HASHTABLE."
-  `(symbol-value (intern-soft ,string ,hashtable)))
-
-(defmacro gnus-gethash-safe (string hashtable)
-  "Get hash value of STRING in HASHTABLE.
-Return nil if not defined."
-  `(let ((sym (intern-soft ,string ,hashtable)))
-     (and (boundp sym) (symbol-value sym))))
-
-(defmacro gnus-sethash (string value hashtable)
-  "Set hash value.  Arguments are STRING, VALUE, and HASHTABLE."
-  `(set (intern ,string ,hashtable) ,value))
-(put 'gnus-sethash 'edebug-form-spec '(form form form))
-
 (defmacro gnus-group-unread (group)
   "Get the currently computed number of unread articles in GROUP."
-  `(car (gnus-gethash ,group gnus-newsrc-hashtb)))
+  `(car (gethash ,group gnus-newsrc-hashtb)))
 
 (defmacro gnus-group-entry (group)
   "Get the newsrc entry for GROUP."
-  `(gnus-gethash ,group gnus-newsrc-hashtb))
+  `(gethash ,group gnus-newsrc-hashtb))
 
 (defmacro gnus-active (group)
   "Get active info on GROUP."
-  `(gnus-gethash ,group gnus-active-hashtb))
+  `(gethash ,group gnus-active-hashtb))
 
 (defmacro gnus-set-active (group active)
   "Set GROUP's active info."
-  `(gnus-sethash ,group ,active gnus-active-hashtb))
+  `(puthash ,group ,active gnus-active-hashtb))
 
 ;; Info access macros.
 
@@ -2887,11 +2877,11 @@ Return nil if not defined."
        (setcar rank (cons (car rank) ,score)))))
 
 (defmacro gnus-get-info (group)
-  `(nth 2 (gnus-gethash ,group gnus-newsrc-hashtb)))
+  `(nth 1 (gethash ,group gnus-newsrc-hashtb)))
 
 (defun gnus-set-info (group info)
-  (setcar (nthcdr 2 (gnus-gethash group gnus-newsrc-hashtb))
-	  info))
+  (setcdr (gethash group gnus-newsrc-hashtb)
+	  (list info)))
 
 
 ;;;
@@ -3142,7 +3132,7 @@ that that variable is buffer-local to the summary buffers."
 	 t)				    ;is news of course.
 	((not (gnus-member-of-valid 'post-mail group)) ;Non-combined.
 	 nil)				;must be mail then.
-	((vectorp article)		;Has header info.
+	((mail-header-p article)		;Has header info.
 	 (eq (gnus-request-type group (mail-header-id article)) 'news))
 	((null article)			       ;Hasn't header info
 	 (eq (gnus-request-type group) 'news)) ;(unknown ==> mail)
@@ -3179,7 +3169,7 @@ that that variable is buffer-local to the summary buffers."
 
 (defun gnus-kill-ephemeral-group (group)
   "Remove ephemeral GROUP from relevant structures."
-  (gnus-sethash group nil gnus-newsrc-hashtb))
+  (remhash group gnus-newsrc-hashtb))
 
 (defun gnus-simplify-mode-line ()
   "Make mode lines a bit simpler."
@@ -3637,9 +3627,8 @@ If SYMBOL, return the value of that symbol in the group parameters.
 
 If you call this function inside a loop, consider using the faster
 `gnus-group-fast-parameter' instead."
-  (with-current-buffer (if (buffer-live-p (get-buffer gnus-group-buffer))
-			   gnus-group-buffer
-			 (current-buffer))
+  (with-current-buffer (or (gnus-buffer-live-p gnus-group-buffer)
+                           (current-buffer))
     (if symbol
 	(gnus-group-fast-parameter group symbol allow-list)
       (nconc
@@ -3745,7 +3734,7 @@ just the host name."
     ;; otherwise collapse to select method.
     (let* ((colon (string-match ":" group))
 	   (server (and colon (substring group 0 colon)))
-	   (plus (and server (string-match "+" server))))
+	   (plus (and server (string-match "\\+" server))))
       (when server
 	(if plus
 	    (setq foreign (substring server (+ 1 plus)

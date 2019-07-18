@@ -1,6 +1,6 @@
 ;;; lread-tests.el --- tests for lread.c -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2016-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2016-2019 Free Software Foundation, Inc.
 
 ;; Author: Philipp Stephani <phst@google.com>
 
@@ -140,7 +140,9 @@ literals (Bug#20852)."
     (should (equal (lread-tests--last-message)
                    (concat (format-message "Loading `%s': " file-name)
                            "unescaped character literals "
-                           "`?\"', `?(', `?)', `?;', `?[', `?]' detected!")))))
+                           "`?\"', `?(', `?)', `?;', `?[', `?]' detected, "
+                           "`?\\\"', `?\\(', `?\\)', `?\\;', `?\\[', `?\\]' "
+                           "expected!")))))
 
 (ert-deftest lread-tests--funny-quote-symbols ()
   "Check that 'smart quotes' or similar trigger errors in symbol names."
@@ -195,9 +197,7 @@ literals (Bug#20852)."
     (should (eq x (cdr x)))))
 
 (ert-deftest lread-long-hex-integer ()
-  (should-error
-   (read "#xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-   :type 'overflow-error))
+  (should (bignump (read "#xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"))))
 
 (ert-deftest lread-test-bug-31186 ()
   (with-temp-buffer
@@ -210,5 +210,14 @@ literals (Bug#20852)."
 (ert-deftest lread-invalid-bytecodes ()
   (should-error
    (let ((load-force-doc-strings t)) (read "#[0 \"\"]"))))
+
+(ert-deftest lread-string-to-number-trailing-dot ()
+  (dolist (n (list (* most-negative-fixnum most-negative-fixnum)
+                   (1- most-negative-fixnum) most-negative-fixnum
+                   (1+ most-negative-fixnum) -1 0 1
+                   (1- most-positive-fixnum) most-positive-fixnum
+                   (1+ most-positive-fixnum)
+                   (* most-positive-fixnum most-positive-fixnum)))
+    (should (= n (string-to-number (format "%d." n))))))
 
 ;;; lread-tests.el ends here

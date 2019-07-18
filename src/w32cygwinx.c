@@ -1,6 +1,6 @@
 /* Common functions for the Microsoft Windows and Cygwin builds.
 
-Copyright (C) 2018 Free Software Foundation, Inc.
+Copyright (C) 2018-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -115,15 +115,14 @@ The following %-sequences are provided:
 	  remain = format_string ("%ld:%02ld", m / 60, m % 60);
 	}
 
-      status = listn (CONSTYPE_HEAP, 8,
-		      Fcons (make_number ('L'), line_status),
-		      Fcons (make_number ('B'), battery_status),
-		      Fcons (make_number ('b'), battery_status_symbol),
-		      Fcons (make_number ('p'), load_percentage),
-		      Fcons (make_number ('s'), seconds),
-		      Fcons (make_number ('m'), minutes),
-		      Fcons (make_number ('h'), hours),
-		      Fcons (make_number ('t'), remain));
+      status =  list (Fcons (make_fixnum ('L'), line_status),
+		      Fcons (make_fixnum ('B'), battery_status),
+		      Fcons (make_fixnum ('b'), battery_status_symbol),
+		      Fcons (make_fixnum ('p'), load_percentage),
+		      Fcons (make_fixnum ('s'), seconds),
+		      Fcons (make_fixnum ('m'), minutes),
+		      Fcons (make_fixnum ('h'), hours),
+		      Fcons (make_fixnum ('t'), remain));
     }
   return status;
 }

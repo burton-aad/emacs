@@ -1,5 +1,5 @@
 /* Fringe handling (split from xdisp.c).
-   Copyright (C) 1985-1988, 1993-1995, 1997-2018 Free Software
+   Copyright (C) 1985-1988, 1993-1995, 1997-2019 Free Software
    Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -18,7 +18,6 @@ You should have received a copy of the GNU General Public License
 along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
-#include <stdio.h>
 
 #include <byteswap.h>
 
@@ -30,6 +29,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "buffer.h"
 #include "blockinput.h"
 #include "termhooks.h"
+#include "pdumper.h"
 
 /* Fringe bitmaps are represented in three different ways:
 
@@ -488,10 +488,10 @@ lookup_fringe_bitmap (Lisp_Object bitmap)
   EMACS_INT bn;
 
   bitmap = Fget (bitmap, Qfringe);
-  if (!INTEGERP (bitmap))
+  if (!FIXNUMP (bitmap))
     return 0;
 
-  bn = XINT (bitmap);
+  bn = XFIXNUM (bitmap);
   if (bn > NO_FRINGE_BITMAP
       && bn < max_used_fringe_bitmap
       && (bn < MAX_STANDARD_FRINGE_BITMAPS
@@ -519,7 +519,7 @@ get_fringe_bitmap_name (int bn)
     return Qnil;
 
   bitmaps = Vfringe_bitmaps;
-  num = make_number (bn);
+  num = make_fixnum (bn);
 
   while (CONSP (bitmaps))
     {
@@ -719,7 +719,7 @@ static int
 get_logical_fringe_bitmap (struct window *w, Lisp_Object bitmap, int right_p, int partial_p)
 {
   Lisp_Object cmap, bm1 = Qnil, bm2 = Qnil, bm;
-  EMACS_INT ln1 = 0, ln2 = 0;
+  ptrdiff_t ln1 = 0, ln2 = 0;
   int ix1 = right_p;
   int ix2 = ix1 + (partial_p ? 2 : 0);
 
@@ -743,12 +743,12 @@ get_logical_fringe_bitmap (struct window *w, Lisp_Object bitmap, int right_p, in
 	    return NO_FRINGE_BITMAP;
 	  if (CONSP (bm1))
 	    {
-	      ln1 = XINT (Flength (bm1));
+	      ln1 = list_length (bm1);
 	      if (partial_p)
 		{
 		  if (ln1 > ix2)
 		    {
-		      bm = Fnth (make_number (ix2), bm1);
+		      bm = Fnth (make_fixnum (ix2), bm1);
 		      if (!EQ (bm, Qt))
 			goto found;
 		    }
@@ -757,7 +757,7 @@ get_logical_fringe_bitmap (struct window *w, Lisp_Object bitmap, int right_p, in
 		{
 		  if (ln1 > ix1)
 		    {
-		      bm = Fnth (make_number (ix1), bm1);
+		      bm = Fnth (make_fixnum (ix1), bm1);
 		      if (!EQ (bm, Qt))
 			goto found;
 		    }
@@ -778,12 +778,12 @@ get_logical_fringe_bitmap (struct window *w, Lisp_Object bitmap, int right_p, in
 	    {
 	      if (CONSP (bm2))
 		{
-		  ln2 = XINT (Flength (bm2));
+		  ln2 = list_length (bm2);
 		  if (partial_p)
 		    {
 		      if (ln2 > ix2)
 			{
-			  bm = Fnth (make_number (ix2), bm2);
+			  bm = Fnth (make_fixnum (ix2), bm2);
 			  if (!EQ (bm, Qt))
 			    goto found;
 			}
@@ -795,14 +795,14 @@ get_logical_fringe_bitmap (struct window *w, Lisp_Object bitmap, int right_p, in
 
   if (ln1 > ix1)
     {
-      bm = Fnth (make_number (ix1), bm1);
+      bm = Fnth (make_fixnum (ix1), bm1);
       if (!EQ (bm, Qt))
 	goto found;
     }
 
   if (ln2 > ix1)
     {
-      bm = Fnth (make_number (ix1), bm2);
+      bm = Fnth (make_fixnum (ix1), bm2);
       if (!EQ (bm, Qt))
 	goto found;
       return NO_FRINGE_BITMAP;
@@ -909,6 +909,12 @@ draw_window_fringes (struct window *w, bool no_fringe_p)
   if (w->pseudo_window_p)
     return updated_p;
 
+  /* We must switch to the window's buffer to use its local value of
+     the fringe face, in case it's been remapped in face-remapping-alist.  */
+  Lisp_Object window_buffer = w->contents;
+  struct buffer *oldbuf = current_buffer;
+  set_buffer_internal_1 (XBUFFER (window_buffer));
+
   /* Must draw line if no fringe */
   if (no_fringe_p
       && (WINDOW_LEFT_FRINGE_WIDTH (w) == 0
@@ -925,6 +931,8 @@ draw_window_fringes (struct window *w, bool no_fringe_p)
       row->redraw_fringe_bitmaps_p = 0;
       updated_p = 1;
     }
+
+  set_buffer_internal_1 (oldbuf);
 
   return updated_p;
 }
@@ -1509,8 +1517,8 @@ If BITMAP already exists, the existing definition is replaced.  */)
     fb.height = h;
   else
     {
-      CHECK_NUMBER (height);
-      fb.height = max (0, min (XINT (height), 255));
+      CHECK_FIXNUM (height);
+      fb.height = max (0, min (XFIXNUM (height), 255));
       if (fb.height > h)
 	{
 	  fill1 = (fb.height - h) / 2;
@@ -1522,8 +1530,8 @@ If BITMAP already exists, the existing definition is replaced.  */)
     fb.width = 8;
   else
     {
-      CHECK_NUMBER (width);
-      fb.width = max (0, min (XINT (width), 255));
+      CHECK_FIXNUM (width);
+      fb.width = max (0, min (XFIXNUM (width), 255));
     }
 
   fb.period = 0;
@@ -1586,7 +1594,7 @@ If BITMAP already exists, the existing definition is replaced.  */)
 	}
 
       Vfringe_bitmaps = Fcons (bitmap, Vfringe_bitmaps);
-      Fput (bitmap, Qfringe, make_number (n));
+      Fput (bitmap, Qfringe, make_fixnum (n));
     }
 
   fb.dynamic = true;
@@ -1604,8 +1612,8 @@ If BITMAP already exists, the existing definition is replaced.  */)
 	b[j++] = 0;
       for (i = 0; i < h && j < fb.height; i++)
 	{
-	  Lisp_Object elt = Faref (bits, make_number (i));
-	  b[j++] = NUMBERP (elt) ? XINT (elt) : 0;
+	  Lisp_Object elt = Faref (bits, make_fixnum (i));
+	  b[j++] = FIXNUMP (elt) ? XFIXNUM (elt) : 0;
 	}
       for (i = 0; i < fill2 && j < fb.height; i++)
 	b[j++] = 0;
@@ -1661,10 +1669,10 @@ Return nil if POS is not visible in WINDOW.  */)
 
   if (!NILP (pos))
     {
-      CHECK_NUMBER_COERCE_MARKER (pos);
-      if (! (BEGV <= XINT (pos) && XINT (pos) <= ZV))
+      CHECK_FIXNUM_COERCE_MARKER (pos);
+      if (! (BEGV <= XFIXNUM (pos) && XFIXNUM (pos) <= ZV))
 	args_out_of_range (window, pos);
-      textpos = XINT (pos);
+      textpos = XFIXNUM (pos);
     }
   else if (w == XWINDOW (selected_window))
     textpos = PT;
@@ -1731,12 +1739,18 @@ mark_fringe_data (void)
 
 /* Initialize this module when Emacs starts.  */
 
+static void init_fringe_once_for_pdumper (void);
+
 void
 init_fringe_once (void)
 {
-  int bt;
+  pdumper_do_now_and_after_load (init_fringe_once_for_pdumper);
+}
 
-  for (bt = NO_FRINGE_BITMAP + 1; bt < MAX_STANDARD_FRINGE_BITMAPS; bt++)
+static void
+init_fringe_once_for_pdumper (void)
+{
+  for (int bt = NO_FRINGE_BITMAP + 1; bt < MAX_STANDARD_FRINGE_BITMAPS; bt++)
     init_fringe_bitmap (bt, &standard_bitmaps[bt], 1);
 }
 

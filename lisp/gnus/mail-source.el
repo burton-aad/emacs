@@ -1,6 +1,6 @@
 ;;; mail-source.el --- functions for fetching mail
 
-;; Copyright (C) 1999-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news, mail
@@ -31,7 +31,6 @@
 (autoload 'auth-source-search "auth-source")
 (autoload 'pop3-movemail "pop3")
 (autoload 'pop3-get-message-count "pop3")
-(autoload 'nnheader-cancel-timer "nnheader")
 (require 'mm-util)
 (require 'message) ;; for `message-directory'
 
@@ -602,7 +601,8 @@ If CONFIRM is non-nil, ask for confirmation before removing a file."
       (let* ((ffile (car files))
 	     (bfile (replace-regexp-in-string "\\`.*/\\([^/]+\\)\\'" "\\1"
 					      ffile))
-	     (filetime (nth 5 (file-attributes ffile))))
+	     (filetime (file-attribute-modification-time
+			(file-attributes ffile))))
 	(setq files (cdr files))
 	(when (and (> (time-to-number-of-days (time-subtract now filetime))
 		      diff)
@@ -618,7 +618,8 @@ Deleting old (> %s day(s)) incoming mail file `%s'." diff bfile)
 (defun mail-source-callback (callback info)
   "Call CALLBACK on the mail file.  Pass INFO on to CALLBACK."
   (if (or (not (file-exists-p mail-source-crash-box))
-	  (zerop (nth 7 (file-attributes mail-source-crash-box))))
+	  (zerop (file-attribute-size
+		  (file-attributes mail-source-crash-box))))
       (progn
 	(when (file-exists-p mail-source-crash-box)
 	  (delete-file mail-source-crash-box))
@@ -645,9 +646,9 @@ Deleting old (> %s day(s)) incoming mail file `%s'." diff bfile)
 	  ;; Don't check for old incoming files more than once per day to
 	  ;; save a lot of file accesses.
 	  (when (or (null mail-source-incoming-last-checked-time)
-		    (> (float-time
-			(time-since mail-source-incoming-last-checked-time))
-		       (* 24 60 60)))
+		    (time-less-p
+		     (* 24 60 60)
+		     (time-since mail-source-incoming-last-checked-time)))
 	    (setq mail-source-incoming-last-checked-time (current-time))
 	    (mail-source-delete-old-incoming
 	     mail-source-delete-incoming
@@ -670,7 +671,7 @@ Deleting old (> %s day(s)) incoming mail file `%s'." diff bfile)
        ((not (file-exists-p from))
 	;; There is no inbox.
 	(setq to nil))
-       ((zerop (nth 7 (file-attributes from)))
+       ((zerop (file-attribute-size (file-attributes from)))
 	;; Empty file.
 	(setq to nil))
        (t
@@ -721,8 +722,7 @@ Deleting old (> %s day(s)) incoming mail file `%s'." diff bfile)
 				   (buffer-string) result))
 		    (error "%s" (buffer-string)))
 		  (setq to nil)))))))
-      (when (and errors
-		 (buffer-name errors))
+      (when (buffer-live-p errors)
 	(kill-buffer errors))
       ;; Return whether we moved successfully or not.
       to)))
@@ -987,9 +987,9 @@ This only works when `display-time' is enabled."
 	      (> (prefix-numeric-value arg) 0))))
     (setq mail-source-report-new-mail on)
     (and mail-source-report-new-mail-timer
-	 (nnheader-cancel-timer mail-source-report-new-mail-timer))
+	 (cancel-timer mail-source-report-new-mail-timer))
     (and mail-source-report-new-mail-idle-timer
-	 (nnheader-cancel-timer mail-source-report-new-mail-idle-timer))
+	 (cancel-timer mail-source-report-new-mail-idle-timer))
     (setq mail-source-report-new-mail-timer nil)
     (setq mail-source-report-new-mail-idle-timer nil)
     (if on

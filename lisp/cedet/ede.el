@@ -1,6 +1,6 @@
 ;;; ede.el --- Emacs Development Environment gloss
 
-;; Copyright (C) 1998-2005, 2007-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2005, 2007-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Keywords: project, make
@@ -791,7 +791,7 @@ Optional argument NAME is the name to give this project."
 		 ))
 	 (inits (oref obj initializers)))
     ;; Force the name to match for new objects.
-    (eieio-object-set-name-string nobj (oref nobj name))
+    (setf (slot-value nobj 'object-name) (oref nobj name))
     ;; Handle init args.
     (while inits
       (eieio-oset nobj (car inits) (car (cdr inits)))

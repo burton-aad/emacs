@@ -1,8 +1,8 @@
 ;;; ede/linux.el --- Special project for Linux
 
-;; Copyright (C) 2008-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2019 Free Software Foundation, Inc.
 
-;; Author: Eric M. Ludlam <eric@siege-engine.com>
+;; Author: Eric M. Ludlam <zappo@gnu.org>
 
 ;; This file is part of GNU Emacs.
 
@@ -34,11 +34,8 @@
 
 (require 'ede)
 (require 'ede/make)
+(require 'semantic/db)
 (eval-when-compile (require 'cl-lib))
-
-(declare-function semanticdb-file-table-object "semantic/db")
-(declare-function semanticdb-needs-refresh-p "semantic/db")
-(declare-function semanticdb-refresh-table "semantic/db")
 
 ;;; Code:
 (defgroup project-linux nil

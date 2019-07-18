@@ -1,6 +1,6 @@
 /* Fully extensible Emacs, running on Unix, intended for GNU.
 
-Copyright (C) 1985-1987, 1993-1995, 1997-1999, 2001-2018 Free Software
+Copyright (C) 1985-1987, 1993-1995, 1997-1999, 2001-2019 Free Software
 Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -26,9 +26,8 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <stdlib.h>
 
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
-
-#include <close-stream.h>
 
 #define MAIN_PROGRAM
 #include "lisp.h"
@@ -66,6 +65,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include TERM_HEADER
 #endif /* HAVE_WINDOW_SYSTEM */
 
+#include "bignum.h"
 #include "intervals.h"
 #include "character.h"
 #include "buffer.h"
@@ -84,7 +84,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "composite.h"
 #include "dispextern.h"
 #include "ptr-bounds.h"
-#include "regex.h"
+#include "regex-emacs.h"
 #include "sheap.h"
 #include "syntax.h"
 #include "sysselect.h"
@@ -117,6 +117,9 @@ extern char etext;
 #include <sys/resource.h>
 #endif
 
+#include "pdumper.h"
+#include "epaths.h"
+
 static const char emacs_version[] = PACKAGE_VERSION;
 static const char emacs_copyright[] = COPYRIGHT;
 static const char emacs_bugreport[] = PACKAGE_BUGREPORT;
@@ -129,18 +132,8 @@ Lisp_Object empty_unibyte_string, empty_multibyte_string;
 Lisp_Object Vlibrary_cache;
 #endif
 
-/* Set after Emacs has started up the first time.
-   Prevents reinitialization of the Lisp world and keymaps
-   on subsequent starts.  */
+struct gflags gflags;
 bool initialized;
-
-#ifndef CANNOT_DUMP
-/* Set to true if this instance of Emacs might dump.  */
-# ifndef DOUG_LEA_MALLOC
-static
-# endif
-bool might_dump;
-#endif
 
 /* If true, Emacs should not attempt to use a window-specific code,
    but instead should use the virtual terminal under which it was started.  */
@@ -155,17 +148,22 @@ bool running_asynch_code;
 bool display_arg;
 #endif
 
-#if defined GNU_LINUX && !defined CANNOT_DUMP
+#if defined GNU_LINUX && defined HAVE_UNEXEC
 /* The gap between BSS end and heap start as far as we can tell.  */
-static uprintmax_t heap_bss_diff;
+static uintmax_t heap_bss_diff;
 #endif
 
 /* To run as a background daemon under Cocoa or Windows,
    we must do a fork+exec, not a simple fork.
 
-   On Cocoa, CoreFoundation lib fails in forked process:
+   On Cocoa, CoreFoundation lib fails in forked process, see Mac OS X
+   Leopard Developer Release Notes for CoreFoundation Framework:
+
    http://developer.apple.com/ReleaseNotes/
-   CoreFoundation/CoreFoundation.html)
+   CoreFoundation/CoreFoundation.html
+
+   Note: the above is no longer available on-line, but it can be found
+   via the "Wayback machine", https://web.archive.org.
 
    On Windows, a Cygwin fork child cannot access the USER subsystem.
 
@@ -203,6 +201,9 @@ HANDLE w32_daemon_event;
 char **initial_argv;
 int initial_argc;
 
+/* The name of the working directory, or NULL if this info is unavailable.  */
+char const *emacs_wd;
+
 static void sort_args (int argc, char **argv);
 static void syms_of_emacs (void);
 
@@ -232,6 +233,11 @@ Initialization options:\n\
 #ifdef HAVE_MODULES
     "\
 --module-assertions         assert behavior of dynamic modules\n\
+",
+#endif
+#ifdef HAVE_PDUMPER
+    "\
+--dump-file FILE            read dumped state from FILE\n\
 ",
 #endif
     "\
@@ -335,7 +341,7 @@ section of the Emacs manual or the file BUGS.\n"
 bool fatal_error_in_progress;
 
 #ifdef HAVE_NS
-/* NS autrelease pool, for memory management.  */
+/* NS autorelease pool, for memory management.  */
 static void *ns_pool;
 #endif
 
@@ -363,7 +369,7 @@ using_utf8 (void)
 
 /* Report a fatal error due to signal SIG, output a backtrace of at
    most BACKTRACE_LIMIT lines, and exit.  */
-_Noreturn void
+AVOID
 terminate_due_to_signal (int sig, int backtrace_limit)
 {
   signal (sig, SIG_DFL);
@@ -377,7 +383,7 @@ terminate_due_to_signal (int sig, int backtrace_limit)
 
           totally_unblock_input ();
           if (sig == SIGTERM || sig == SIGHUP || sig == SIGINT)
-            Fkill_emacs (make_number (sig));
+            Fkill_emacs (make_fixnum (sig));
 
           shut_down_emacs (sig, Qnil);
           emacs_backtrace (backtrace_limit);
@@ -405,7 +411,7 @@ terminate_due_to_signal (int sig, int backtrace_limit)
 /* Code for dealing with Lisp access to the Unix command line.  */
 
 static void
-init_cmdargs (int argc, char **argv, int skip_args, char *original_pwd)
+init_cmdargs (int argc, char **argv, int skip_args, char const *original_pwd)
 {
   int i;
   Lisp_Object name, dir, handler;
@@ -446,7 +452,7 @@ init_cmdargs (int argc, char **argv, int skip_args, char *original_pwd)
     {
       Lisp_Object found;
       int yes = openp (Vexec_path, Vinvocation_name,
-		       Vexec_suffixes, &found, make_number (X_OK), false);
+		       Vexec_suffixes, &found, make_fixnum (X_OK), false);
       if (yes == 1)
 	{
 	  /* Add /: to the front of the name
@@ -515,8 +521,7 @@ init_cmdargs (int argc, char **argv, int skip_args, char *original_pwd)
 	      etc_exists = Ffile_exists_p (tem);
 	      if (!NILP (etc_exists))
 		{
-		  Vinstallation_directory
-		    = Ffile_name_as_directory (dir);
+                  Vinstallation_directory = Ffile_name_as_directory (dir);
 		  break;
 		}
 	    }
@@ -541,8 +546,7 @@ init_cmdargs (int argc, char **argv, int skip_args, char *original_pwd)
 	      if (!NILP (etc_exists))
 		{
 		  tem = Fexpand_file_name (build_string (".."), dir);
-		  Vinstallation_directory
-		    = Ffile_name_as_directory (tem);
+                  Vinstallation_directory = Ffile_name_as_directory (tem);
 		  break;
 		}
 	    }
@@ -655,23 +659,299 @@ argmatch (char **argv, int argc, const char *sstr, const char *lstr,
     }
 }
 
-/* Close standard output and standard error, reporting any write
-   errors as best we can.  This is intended for use with atexit.  */
-static void
-close_output_streams (void)
+#ifdef HAVE_PDUMPER
+
+static const char *
+dump_error_to_string (enum pdumper_load_result result)
 {
-  if (close_stream (stdout) != 0)
+  switch (result)
     {
-      emacs_perror ("Write error to standard output");
-      _exit (EXIT_FAILURE);
+    case PDUMPER_LOAD_SUCCESS:
+      return "success";
+    case PDUMPER_LOAD_OOM:
+      return "out of memory";
+    case PDUMPER_NOT_LOADED:
+      return "not loaded";
+    case PDUMPER_LOAD_FILE_NOT_FOUND:
+      return "could not open file";
+    case PDUMPER_LOAD_BAD_FILE_TYPE:
+      return "not a dump file";
+    case PDUMPER_LOAD_FAILED_DUMP:
+      return "dump file is result of failed dump attempt";
+    case PDUMPER_LOAD_VERSION_MISMATCH:
+      return "not built for this Emacs executable";
+    default:
+      return "generic error";
+    }
+}
+
+/* Find a path (absolute or relative) to the Emacs executable.
+   Called early in initialization by portable dump loading code, so we
+   can't use lisp and associated machinery.  On success, *EXENAME is
+   set to a heap-allocated string giving a path to the Emacs
+   executable or to NULL if we can't determine the path immediately.
+ */
+static enum pdumper_load_result
+load_pdump_find_executable (const char* argv0, char **exename)
+{
+  enum pdumper_load_result result;
+#ifdef WINDOWSNT
+  result = PDUMPER_LOAD_ERROR;
+  *exename = NULL;
+  char *prog_fname = w32_my_exename ();
+  if (prog_fname)
+    {
+      result = PDUMPER_LOAD_OOM;
+      /* Use xstrdup, so as to call our private implementation of
+	 malloc, since the caller calls our free.  */
+      char *ret = xstrdup (prog_fname);
+      if (ret)
+	{
+	  *exename = ret;
+	  result = PDUMPER_LOAD_SUCCESS;
+	}
+    }
+  return result;
+#else  /* !WINDOWSNT */
+  char *candidate = NULL;
+
+  /* If the executable name contains a slash, we have some kind of
+     path already, so just copy it.  */
+  eassert (argv0);
+  if (strchr (argv0, DIRECTORY_SEP))
+    {
+      result = PDUMPER_LOAD_OOM;
+      char *ret = strdup (argv0);
+      if (!ret)
+        goto out;
+      result = PDUMPER_LOAD_SUCCESS;
+      *exename = ret;
+      goto out;
+    }
+  size_t argv0_length = strlen (argv0);
+
+  const char *path = getenv ("PATH");
+  if (!path)
+    {
+      /* Default PATH is implementation-defined, so we don't know how
+         to conduct the search.  */
+      result = PDUMPER_LOAD_SUCCESS;
+      *exename = NULL;
+      goto out;
     }
 
-  /* Do not close stderr if addresses are being sanitized, as the
-     sanitizer might report to stderr after this function is
-     invoked.  */
-  if (!ADDRESS_SANITIZER && close_stream (stderr) != 0)
-    _exit (EXIT_FAILURE);
+  /* Actually try each concatenation of a path element and the
+     executable basename.  */
+  const char path_sep[] = { SEPCHAR, '\0' };
+  do
+    {
+      size_t path_part_length = strcspn (path, path_sep);
+      const char *path_part = path;
+      path += path_part_length;
+      if (path_part_length == 0)
+        {
+          path_part = ".";
+          path_part_length = 1;
+        }
+      size_t candidate_length = path_part_length + 1 + argv0_length;
+      {
+        char *new_candidate = realloc (candidate, candidate_length + 1);
+        if (!new_candidate)
+          {
+            result = PDUMPER_LOAD_OOM;
+            goto out;
+          }
+        candidate = new_candidate;
+      }
+      memcpy (candidate + 0, path_part, path_part_length);
+      candidate[path_part_length] = DIRECTORY_SEP;
+      memcpy (candidate + path_part_length + 1, argv0, argv0_length + 1);
+      struct stat st;
+      if (!access (candidate, X_OK) &&
+          !stat (candidate, &st) &&
+          S_ISREG (st.st_mode))
+        {
+          *exename = candidate;
+          candidate = NULL;
+          break;
+        }
+    } while ((path++)[0] != '\0');
+
+  result = PDUMPER_LOAD_SUCCESS;
+
+ out:
+  free (candidate);
+  return result;
+#endif	/* !WINDOWSNT */
 }
+
+static enum pdumper_load_result
+load_pdump (int argc, char **argv)
+{
+  const char *const suffix = ".pdmp";
+  enum pdumper_load_result result;
+  char *exename = NULL;
+  char *real_exename = NULL;
+  const char* strip_suffix =
+#if defined DOS_NT || defined CYGWIN
+    ".exe"
+#else
+    NULL
+#endif
+    ;
+
+  /* TODO: maybe more thoroughly scrub process environment in order to
+     make this use case (loading a pdumper image in an unexeced emacs)
+     possible?  Right now, we assume that things we don't touch are
+     zero-initialized, and in an unexeced Emacs, this assumption
+     doesn't hold.  */
+  if (initialized)
+    fatal ("cannot load pdumper image in unexeced Emacs");
+
+  /* Look for an explicitly-specified dump file.  */
+  const char *path_exec = PATH_EXEC;
+  char *dump_file = NULL;
+  int skip_args = 0;
+  while (skip_args < argc - 1)
+    {
+      if (argmatch (argv, argc, "-dump-file", "--dump-file", 6,
+		    &dump_file, &skip_args)
+	  || argmatch (argv, argc, "--", NULL, 2, NULL, &skip_args))
+	break;
+      skip_args++;
+    }
+
+  result = PDUMPER_NOT_LOADED;
+  if (dump_file)
+    {
+      result = pdumper_load (dump_file);
+
+      if (result != PDUMPER_LOAD_SUCCESS)
+        fatal ("could not load dump file \"%s\": %s",
+               dump_file, dump_error_to_string (result));
+      else
+        goto out;
+    }
+
+  /* Look for a dump file in the same directory as the executable; it
+     should have the same basename.  Take care to search PATH to find
+     the executable if needed.  We're too early in init to use Lisp,
+     so we can't use decode_env_path.  We're working in whatever
+     encoding the system natively uses for filesystem access, so
+     there's no need for character set conversion.  */
+  result = load_pdump_find_executable (argv[0], &exename);
+  if (result != PDUMPER_LOAD_SUCCESS)
+    goto out;
+
+  /* If we couldn't find our executable, go straight to looking for
+     the dump in the hardcoded location.  */
+  if (exename)
+    {
+#ifdef WINDOWSNT
+      /* w32_my_exename resolves symlinks internally, so no need to
+	 call realpath.  */
+      real_exename = exename;
+      exename = NULL;
+#else
+      real_exename = realpath (exename, NULL);
+      if (!real_exename)
+        fatal ("could not resolve realpath of \"%s\": %s",
+               exename, strerror (errno));
+#endif
+      size_t real_exename_length = strlen (real_exename);
+      if (strip_suffix)
+        {
+          size_t strip_suffix_length = strlen (strip_suffix);
+          if (real_exename_length >= strip_suffix_length)
+            {
+              size_t prefix_length =
+                real_exename_length - strip_suffix_length;
+              if (!memcmp (&real_exename[prefix_length],
+                           strip_suffix,
+                           strip_suffix_length))
+                  real_exename_length = prefix_length;
+            }
+        }
+      dump_file = alloca (real_exename_length + strlen (suffix) + 1);
+      memcpy (dump_file, real_exename, real_exename_length);
+      memcpy (dump_file + real_exename_length,
+              suffix,
+              strlen (suffix) + 1);
+      result = pdumper_load (dump_file);
+      if (result == PDUMPER_LOAD_SUCCESS)
+        goto out;
+
+      if (result != PDUMPER_LOAD_FILE_NOT_FOUND)
+        fatal ("could not load dump file \"%s\": %s",
+               dump_file, dump_error_to_string (result));
+    }
+
+#ifdef WINDOWSNT
+  /* On MS-Windows, PATH_EXEC normally starts with a literal
+     "%emacs_dir%", so it will never work without some tweaking.  */
+  path_exec = w32_relocate (path_exec);
+#endif
+
+  /* Look for "emacs.pdmp" in PATH_EXEC.  We hardcode "emacs" in
+     "emacs.pdmp" so that the Emacs binary still works if the user
+     copies and renames it.  */
+  const char *argv0_base = "emacs";
+  dump_file = alloca (strlen (path_exec)
+                      + 1
+                      + strlen (argv0_base)
+                      + strlen (suffix)
+                      + 1);
+  sprintf (dump_file, "%s%c%s%s",
+           path_exec, DIRECTORY_SEP, argv0_base, suffix);
+  result = pdumper_load (dump_file);
+  if (result == PDUMPER_LOAD_SUCCESS)
+    goto out;
+
+  if (result == PDUMPER_LOAD_FILE_NOT_FOUND)
+    {
+      /* Finally, look for basename(argv0)+".pdmp" in PATH_EXEC.
+	 This way, they can rename both the executable and its pdump
+	 file in PATH_EXEC, and have several Emacs configurations in
+	 the same versioned libexec subdirectory.  */
+      char *p, *last_sep = NULL;
+      for (p = argv[0]; *p; p++)
+	{
+	  if (IS_DIRECTORY_SEP (*p))
+	    last_sep = p;
+	}
+      argv0_base = last_sep ? last_sep + 1 : argv[0];
+      dump_file = alloca (strlen (path_exec)
+			  + 1
+			  + strlen (argv0_base)
+			  + strlen (suffix)
+			  + 1);
+#ifdef DOS_NT
+      size_t argv0_len = strlen (argv0_base);
+      if (argv0_len >= 4
+	  && c_strcasecmp (argv0_base + argv0_len - 4, ".exe") == 0)
+	sprintf (dump_file, "%s%c%.*s%s", path_exec, DIRECTORY_SEP,
+		 (int)(argv0_len - 4), argv0_base, suffix);
+      else
+#endif
+      sprintf (dump_file, "%s%c%s%s",
+	       path_exec, DIRECTORY_SEP, argv0_base, suffix);
+      result = pdumper_load (dump_file);
+    }
+
+  if (result != PDUMPER_LOAD_SUCCESS)
+    {
+      if (result != PDUMPER_LOAD_FILE_NOT_FOUND)
+	fatal ("could not load dump file \"%s\": %s",
+	       dump_file, dump_error_to_string (result));
+      dump_file = NULL;
+    }
+
+ out:
+  free (exename);
+  free (real_exename);
+  return result;
+}
+#endif /* HAVE_PDUMPER */
 
 /* ARGSUSED */
 int
@@ -682,8 +962,6 @@ main (int argc, char **argv)
   void *stack_bottom_variable;
 
   bool do_initial_setlocale;
-  bool dumping;
-  int skip_args = 0;
   bool no_loadup = false;
   char *junk = 0;
   char *dname_arg = 0;
@@ -693,56 +971,99 @@ main (int argc, char **argv)
   char *ch_to_dir = 0;
 
   /* If we use --chdir, this records the original directory.  */
-  char *original_pwd = 0;
+  char const *original_pwd = 0;
 
   /* Record (approximately) where the stack begins.  */
   stack_bottom = (char *) &stack_bottom_variable;
 
-#ifndef CANNOT_DUMP
-  dumping = !initialized && (strcmp (argv[argc - 1], "dump") == 0
-			     || strcmp (argv[argc - 1], "bootstrap") == 0);
-#else
-  dumping = false;
+  const char *dump_mode = NULL;
+  int skip_args = 0;
+  char *temacs = NULL;
+  while (skip_args < argc - 1)
+    {
+      if (argmatch (argv, argc, "-temacs", "--temacs", 8, &temacs, &skip_args)
+	  || argmatch (argv, argc, "--", NULL, 2, NULL, &skip_args))
+	break;
+      skip_args++;
+    }
+#ifdef HAVE_PDUMPER
+  bool attempt_load_pdump = false;
 #endif
 
-  /* True if address randomization interferes with memory allocation.  */
-# ifdef __PPC64__
-  bool disable_aslr = true;
-# else
-  bool disable_aslr = dumping;
-# endif
-
-  if (disable_aslr && disable_address_randomization ()
-      && !getenv ("EMACS_HEAP_EXEC"))
+  /* Look for this argument first, before any heap allocation, so we
+     can set heap flags properly if we're going to unexec.  */
+  if (!initialized && temacs)
     {
-      /* Set this so the personality will be reverted before execs
-	 after this one, and to work around an re-exec loop on buggy
-	 kernels (Bug#32083).  */
-      xputenv ("EMACS_HEAP_EXEC=true");
-
-      /* Address randomization was enabled, but is now disabled.
-	 Re-execute Emacs to get a clean slate.  */
-      execvp (argv[0], argv);
-
-      /* If the exec fails, warn and then try anyway.  */
-      perror (argv[0]);
+#ifdef HAVE_UNEXEC
+      if (strcmp (temacs, "dump") == 0 ||
+          strcmp (temacs, "bootstrap") == 0)
+        gflags.will_dump_with_unexec_ = true;
+#endif
+#ifdef HAVE_PDUMPER
+      if (strcmp (temacs, "pdump") == 0 ||
+          strcmp (temacs, "pbootstrap") == 0)
+        gflags.will_dump_with_pdumper_ = true;
+#endif
+#if defined HAVE_PDUMPER || defined HAVE_UNEXEC
+      if (strcmp (temacs, "bootstrap") == 0 ||
+          strcmp (temacs, "pbootstrap") == 0)
+        gflags.will_bootstrap_ = true;
+      gflags.will_dump_ =
+        will_dump_with_pdumper_p () ||
+        will_dump_with_unexec_p ();
+      if (will_dump_p ())
+        dump_mode = temacs;
+#endif
+      if (!dump_mode)
+        fatal ("Invalid temacs mode '%s'", temacs);
+    }
+  else if (temacs)
+    {
+      fatal ("--temacs not supported for unexeced emacs");
+    }
+  else
+    {
+      eassert (!temacs);
+#ifndef HAVE_UNEXEC
+      eassert (!initialized);
+#endif
+#ifdef HAVE_PDUMPER
+      if (!initialized)
+	attempt_load_pdump = true;
+#endif
     }
 
-#ifndef CANNOT_DUMP
-  might_dump = !initialized;
-
-# ifdef GNU_LINUX
-  if (!initialized)
-    {
-      char *heap_start = my_heap_start ();
-      heap_bss_diff = heap_start - max (my_endbss, my_endbss_static);
-    }
-# endif
+#ifdef HAVE_UNEXEC
+  if (!will_dump_with_unexec_p ())
+    gflags.will_not_unexec_ = true;
 #endif
 
+#ifdef WINDOWSNT
+  /* Grab our malloc arena space now, before anything important
+     happens.  This relies on the static heap being needed only in
+     temacs and only if we are going to dump with unexec.  */
+  bool use_dynamic_heap = true;
+  if (temacs)
+    {
+      char *temacs_str = NULL, *p;
+      for (p = argv[0]; (p = strstr (p, "temacs")) != NULL; p++)
+	temacs_str = p;
+      if (temacs_str != NULL
+	  && (temacs_str == argv[0] || IS_DIRECTORY_SEP (temacs_str[-1])))
+	{
+	  /* Note that gflags are set at this point only if we have been
+	     called with the --temacs=METHOD option.  We assume here that
+	     temacs is always called that way, otherwise the functions
+	     that rely on gflags, like will_dump_with_pdumper_p below,
+	     will not do their job.  */
+	  use_dynamic_heap = will_dump_with_pdumper_p ();
+	}
+    }
+  init_heap (use_dynamic_heap);
+#endif
 #if defined WINDOWSNT || defined HAVE_NTGUI
   /* Set global variables used to detect Windows version.  Do this as
-     early as possible.  (unexw32.c calls this function as well, but
+     early as possible.  (w32proc.c calls this function as well, but
      the additional call here is harmless.) */
   cache_system_info ();
 #ifdef WINDOWSNT
@@ -753,8 +1074,26 @@ main (int argc, char **argv)
   /* Initialize the codepage for file names, needed to decode
      non-ASCII file names during startup.  */
   w32_init_file_name_codepage ();
+  /* Initialize the startup directory, needed for emacs_wd below.  */
+  w32_init_current_directory ();
 #endif
   w32_init_main_thread ();
+#endif
+
+#ifdef HAVE_PDUMPER
+  if (attempt_load_pdump)
+    load_pdump (argc, argv);
+#endif
+
+  argc = maybe_disable_address_randomization (
+    will_dump_with_unexec_p (), argc, argv);
+
+#if defined GNU_LINUX && defined HAVE_UNEXEC
+  if (!initialized)
+    {
+      char *heap_start = my_heap_start ();
+      heap_bss_diff = heap_start - max (my_endbss, my_endbss_static);
+    }
 #endif
 
 #ifdef RUN_TIME_REMAP
@@ -763,7 +1102,7 @@ main (int argc, char **argv)
 #endif
 
 /* If using unexmacosx.c (set by s/darwin.h), we must do this. */
-#if defined DARWIN_OS && !defined CANNOT_DUMP
+#if defined DARWIN_OS && defined HAVE_UNEXEC
   if (!initialized)
     unexec_init_emacs_zone ();
 #endif
@@ -775,6 +1114,7 @@ main (int argc, char **argv)
   argc = 0;
   while (argv[argc]) argc++;
 
+  skip_args = 0;
   if (argmatch (argv, argc, "-version", "--version", 3, NULL, &skip_args))
     {
       const char *version, *copyright;
@@ -785,12 +1125,12 @@ main (int argc, char **argv)
 	  tem2 = Fsymbol_value (intern_c_string ("emacs-copyright"));
 	  if (!STRINGP (tem))
 	    {
-	      fprintf (stderr, "Invalid value of 'emacs-version'\n");
+	      fputs ("Invalid value of 'emacs-version'\n", stderr);
 	      exit (1);
 	    }
 	  if (!STRINGP (tem2))
 	    {
-	      fprintf (stderr, "Invalid value of 'emacs-copyright'\n");
+	      fputs ("Invalid value of 'emacs-copyright'\n", stderr);
 	      exit (1);
 	    }
 	  else
@@ -804,15 +1144,22 @@ main (int argc, char **argv)
 	  version = emacs_version;
 	  copyright = emacs_copyright;
 	}
-      printf ("%s %s\n", PACKAGE_NAME, version);
-      printf ("%s\n", copyright);
-      printf ("%s comes with ABSOLUTELY NO WARRANTY.\n", PACKAGE_NAME);
-      printf ("You may redistribute copies of %s\n", PACKAGE_NAME);
-      printf ("under the terms of the GNU General Public License.\n");
-      printf ("For more information about these matters, ");
-      printf ("see the file named COPYING.\n");
+      printf (("%s %s\n"
+	       "%s\n"
+	       "%s comes with ABSOLUTELY NO WARRANTY.\n"
+	       "You may redistribute copies of %s\n"
+	       "under the terms of the GNU General Public License.\n"
+	       "For more information about these matters, "
+	       "see the file named COPYING.\n"),
+	      PACKAGE_NAME, version, copyright, PACKAGE_NAME, PACKAGE_NAME);
       exit (0);
     }
+
+  emacs_wd = emacs_get_current_dir_name ();
+#ifdef HAVE_PDUMPER
+  if (dumped_with_pdumper_p ())
+    pdumper_record_wd (emacs_wd);
+#endif
 
   if (argmatch (argv, argc, "-chdir", "--chdir", 4, &ch_to_dir, &skip_args))
     {
@@ -824,13 +1171,18 @@ main (int argc, char **argv)
       filename_from_ansi (ch_to_dir, newdir);
       ch_to_dir = newdir;
 #endif
-      original_pwd = emacs_get_current_dir_name ();
       if (chdir (ch_to_dir) != 0)
         {
           fprintf (stderr, "%s: Can't chdir to %s: %s\n",
                    argv[0], ch_to_dir, strerror (errno));
           exit (1);
         }
+      original_pwd = emacs_wd;
+#ifdef WINDOWSNT
+      /* Reinitialize Emacs's notion of the startup directory.  */
+      w32_init_current_directory ();
+#endif
+      emacs_wd = emacs_get_current_dir_name ();
     }
 
 #if defined (HAVE_SETRLIMIT) && defined (RLIMIT_STACK) && !defined (CYGWIN)
@@ -846,9 +1198,9 @@ main (int argc, char **argv)
     {
       rlim_t lim = rlim.rlim_cur;
 
-      /* Approximate the amount regex.c needs per unit of
+      /* Approximate the amount regex-emacs.c needs per unit of
 	 emacs_re_max_failures, then add 33% to cover the size of the
-	 smaller stacks that regex.c successively allocates and
+	 smaller stacks that regex-emacs.c successively allocates and
 	 discards on its way to the maximum.  */
       int min_ratio = 20 * sizeof (char *);
       int ratio = min_ratio + min_ratio / 3;
@@ -858,10 +1210,7 @@ main (int argc, char **argv)
          frames.  */
       int extra = (30 * 1000) * 50;
 
-      bool try_to_grow_stack = true;
-#ifndef CANNOT_DUMP
-      try_to_grow_stack = !noninteractive || initialized;
-#endif
+      bool try_to_grow_stack = !noninteractive || initialized;
 
       if (try_to_grow_stack)
 	{
@@ -880,22 +1229,25 @@ main (int argc, char **argv)
 	    newlim = rlim.rlim_max;
 	  newlim -= newlim % pagesize;
 
-	  if (pagesize <= newlim - lim)
+	  if (newlim > lim	/* in case rlim_t is an unsigned type */
+	      && pagesize <= newlim - lim)
 	    {
 	      rlim.rlim_cur = newlim;
 	      if (setrlimit (RLIMIT_STACK, &rlim) == 0)
 		lim = newlim;
 	    }
 	}
-      /* If the stack is big enough, let regex.c more of it before
-         falling back to heap allocation.  */
-      emacs_re_safe_alloca = max
-        (min (lim - extra, SIZE_MAX) * (min_ratio / ratio),
-         MAX_ALLOCA);
+      /* If the stack is big enough, let regex-emacs.c use more of it
+	 before falling back to heap allocation.  */
+      if (lim < extra)
+        lim = extra;    /* avoid wrap-around in unsigned subtraction */
+      ptrdiff_t max_failures
+	= min (lim - extra, min (PTRDIFF_MAX, SIZE_MAX)) / ratio;
+      emacs_re_safe_alloca = max (max_failures * min_ratio, MAX_ALLOCA);
     }
 #endif /* HAVE_SETRLIMIT and RLIMIT_STACK and not CYGWIN */
 
-  clearerr_unlocked (stdin);
+  clearerr (stdin);
 
   emacs_backtrace (-1);
 
@@ -993,7 +1345,7 @@ main (int argc, char **argv)
       int i;
       printf ("Usage: %s [OPTION-OR-FILENAME]...\n", argv[0]);
       for (i = 0; i < ARRAYELTS (usage_message); i++)
-	fputs_unlocked (usage_message[i], stdout);
+	fputs (usage_message[i], stdout);
       exit (0);
     }
 
@@ -1051,7 +1403,7 @@ main (int argc, char **argv)
              before exiting.  */
           if (emacs_pipe (daemon_pipe) != 0)
             {
-              fprintf (stderr, "Cannot pipe!\n");
+              fputs ("Cannot pipe!\n", stderr);
               exit (1);
             }
         } /* daemon_type == 2 */
@@ -1061,10 +1413,10 @@ main (int argc, char **argv)
       int systemd_socket = sd_listen_fds (1);
 
       if (systemd_socket > 1)
-        fprintf (stderr,
-		 ("\n"
-		  "Warning: systemd passed more than one socket to Emacs.\n"
-		  "Try 'Accept=false' in the Emacs socket unit file.\n"));
+        fputs (("\n"
+		"Warning: systemd passed more than one socket to Emacs.\n"
+		"Try 'Accept=false' in the Emacs socket unit file.\n"),
+	       stderr);
       else if (systemd_socket == 1
 	       && (0 < sd_is_socket (SD_LISTEN_FDS_START,
 				     AF_UNSPEC, SOCK_STREAM, 1)))
@@ -1072,9 +1424,10 @@ main (int argc, char **argv)
 #endif /* HAVE_LIBSYSTEMD */
 
 #ifdef USE_GTK
-      fprintf (stderr, "\nWarning: due to a long standing Gtk+ bug\nhttps://gitlab.gnome.org/GNOME/gtk/issues/221\n\
+      fputs ("\nWarning: due to a long standing Gtk+ bug\nhttps://gitlab.gnome.org/GNOME/gtk/issues/221\n\
 Emacs might crash when run in daemon mode and the X11 connection is unexpectedly lost.\n\
-Using an Emacs configured with --with-x-toolkit=lucid does not have this problem.\n");
+Using an Emacs configured with --with-x-toolkit=lucid does not have this problem.\n",
+	     stderr);
 #endif /* USE_GTK */
 
       if (daemon_type == 2)
@@ -1106,12 +1459,12 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 
               if (retval < 0)
                 {
-                  fprintf (stderr, "Error reading status from child\n");
+                  fputs ("Error reading status from child\n", stderr);
                   exit (1);
                 }
               else if (retval == 0)
                 {
-                  fprintf (stderr, "Error: server did not start correctly\n");
+                  fputs ("Error: server did not start correctly\n", stderr);
                   exit (1);
                 }
 
@@ -1137,7 +1490,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 
                 if (! (0 <= fdStrlen && fdStrlen < sizeof fdStr))
                   {
-                    fprintf (stderr, "daemon: child name too long\n");
+                    fputs ("daemon: child name too long\n", stderr);
                     exit (EXIT_CANNOT_INVOKE);
                   }
 
@@ -1151,12 +1504,13 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
               }
 
             /* In exec'd: parse special dname into pipe and name info. */
-            if (!dname_arg || !strchr (dname_arg, '\n')
-                || strlen (dname_arg) < 1 || strlen (dname_arg) > 70)
-          {
-            fprintf (stderr, "emacs daemon: daemon name absent or too long\n");
-            exit (EXIT_CANNOT_INVOKE);
-          }
+            if (!dname_arg || !*dname_arg || strnlen (dname_arg, 71) == 71
+		|| !strchr (dname_arg, '\n'))
+	      {
+		fputs ("emacs daemon: daemon name absent or too long\n",
+		       stderr);
+		exit (EXIT_CANNOT_INVOKE);
+	      }
             dname_arg2[0] = '\0';
             sscanf (dname_arg, "\n%d,%d\n%s", &(daemon_pipe[0]), &(daemon_pipe[1]),
                     dname_arg2);
@@ -1180,7 +1534,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
           exit (1);
         }
 #else /* MSDOS */
-      fprintf (stderr, "This platform does not support daemon mode.\n");
+      fputs ("This platform does not support daemon mode.\n", stderr);
       exit (1);
 #endif /* MSDOS */
       if (dname_arg)
@@ -1189,17 +1543,15 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 
 #if defined HAVE_PTHREAD && !defined SYSTEM_MALLOC \
   && !defined DOUG_LEA_MALLOC && !defined HYBRID_MALLOC
-# ifndef CANNOT_DUMP
   /* Do not make gmalloc thread-safe when creating bootstrap-emacs, as
      that causes an infinite recursive loop with FreeBSD.  See
      Bug#14569.  The part of this bug involving Cygwin is no longer
      relevant, now that Cygwin defines HYBRID_MALLOC.  */
-  if (!noninteractive || initialized)
-# endif
+  if (!noninteractive || !will_dump_p ())
     malloc_enable_thread ();
 #endif
 
-  init_signals (dumping);
+  init_signals ();
 
   noninteractive1 = noninteractive;
 
@@ -1208,8 +1560,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   if (!initialized)
     {
       init_alloc_once ();
-      init_threads_once ();
-      init_obarray ();
+      init_obarray_once ();
       init_eval_once ();
       init_charset_once ();
       init_coding_once ();
@@ -1231,7 +1582,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       /* Call syms_of_keyboard before init_window_once because
 	 keyboard sets up symbols that include some face names that
 	 the X support will want to use.  This can happen when
-	 CANNOT_DUMP is defined.  */
+	 Emacs starts up from scratch (e.g., temacs).  */
       syms_of_keyboard ();
 
       /* Called before syms_of_fileio, because it sets up Qerror_condition.  */
@@ -1247,7 +1598,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       /* Before init_window_once, because it sets up the
 	 Vcoding_system_hash_table.  */
       syms_of_coding ();	/* This should be after syms_of_fileio.  */
-
+      init_frame_once ();       /* Before init_window_once.  */
       init_window_once ();	/* Init the window system.  */
 #ifdef HAVE_WINDOW_SYSTEM
       init_fringe_once ();	/* Swap bitmaps if necessary.  */
@@ -1255,6 +1606,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
     }
 
   init_alloc ();
+  init_bignum ();
   init_threads ();
 
   if (do_initial_setlocale)
@@ -1268,6 +1620,11 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   init_atimer ();
   running_asynch_code = 0;
   init_random ();
+
+#ifdef HAVE_PDUMPER
+  if (dumped_with_pdumper_p ())
+    init_xfaces ();
+#endif
 
 #if defined HAVE_JSON && !defined WINDOWSNT
   init_json ();
@@ -1286,7 +1643,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   bool module_assertions
     = argmatch (argv, argc, "-module-assertions", "--module-assertions", 15,
                 NULL, &skip_args);
-  if (dumping && module_assertions)
+  if (will_dump_p () && module_assertions)
     {
       fputs ("Module assertions are not supported during dumping\n", stderr);
       exit (1);
@@ -1305,21 +1662,21 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
     {
 #ifdef NS_IMPL_COCOA
       /* Started from GUI? */
-      /* FIXME: Do the right thing if getenv returns NULL, or if
+      /* FIXME: Do the right thing if get_homedir returns "", or if
          chdir fails.  */
       if (! inhibit_window_system && ! isatty (STDIN_FILENO) && ! ch_to_dir)
-        chdir (getenv ("HOME"));
+        chdir (get_homedir ());
       if (skip_args < argc)
         {
           if (!strncmp (argv[skip_args], "-psn", 4))
             {
               skip_args += 1;
-              if (! ch_to_dir) chdir (getenv ("HOME"));
+              if (! ch_to_dir) chdir (get_homedir ());
             }
           else if (skip_args+1 < argc && !strncmp (argv[skip_args+1], "-psn", 4))
             {
               skip_args += 2;
-              if (! ch_to_dir) chdir (getenv ("HOME"));
+              if (! ch_to_dir) chdir (get_homedir ());
             }
         }
 #endif  /* COCOA */
@@ -1423,7 +1780,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   /* egetenv is a pretty low-level facility, which may get called in
      many circumstances; it seems flimsy to put off initializing it
      until calling init_callproc.  Do not do it when dumping.  */
-  if (! dumping)
+  if (!will_dump_p ())
     set_initial_environment ();
 
 #ifdef WINDOWSNT
@@ -1437,7 +1794,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
      variables from the parent process without modifications from
      Emacs.  */
   init_environment (argv);
-  init_ntproc (dumping); /* must precede init_editfns.  */
+  init_ntproc (will_dump_p ()); /* must precede init_editfns.  */
 #endif
 
   /* AIX crashes are reported in system versions 3.2.3 and 3.2.4
@@ -1449,7 +1806,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 #endif
 
   /* Init buffer storage and default directory of main buffer.  */
-  init_buffer (initialized);
+  init_buffer ();
 
   init_callproc_1 ();	/* Must precede init_cmdargs and init_sys_modes.  */
 
@@ -1510,6 +1867,8 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       syms_of_minibuf ();
       syms_of_process ();
       syms_of_search ();
+      syms_of_sysdep ();
+      syms_of_timefns ();
       syms_of_frame ();
       syms_of_syntax ();
       syms_of_terminal ();
@@ -1622,6 +1981,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 
       syms_of_threads ();
       syms_of_profiler ();
+      syms_of_pdumper ();
 
 #ifdef HAVE_JSON
       syms_of_json ();
@@ -1651,9 +2011,11 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 
   init_charset ();
 
-  /* This calls putenv and so must precede init_process_emacs.  Also,
-     it sets Voperating_system_release, which init_process_emacs uses.  */
-  init_editfns (dumping);
+  /* This calls putenv and so must precede init_process_emacs.  */
+  init_timefns ();
+
+  /* This sets Voperating_system_release, which init_process_emacs uses.  */
+  init_editfns ();
 
   /* These two call putenv.  */
 #ifdef HAVE_DBUS
@@ -1669,10 +2031,9 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   init_process_emacs (sockfd);
 
   init_keyboard ();	/* This too must precede init_sys_modes.  */
-  if (!noninteractive)
-    init_display ();	/* Determine terminal type.  Calls init_sys_modes.  */
+  init_display ();	/* Determine terminal type.  Calls init_sys_modes.  */
 #if HAVE_W32NOTIFY
-  else
+  if (noninteractive)
     init_crit ();	/* w32notify.c needs this in batch mode.  */
 #endif	/* HAVE_W32NOTIFY */
   init_xdisp ();
@@ -1716,7 +2077,10 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
     moncontrol (0);
 #endif
 
-  initialized = 1;
+  initialized = true;
+
+  if (dump_mode)
+    Vdump_mode = build_string (dump_mode);
 
   /* Enter editor command loop.  This never returns.  */
   Frecursive_edit ();
@@ -1806,6 +2170,12 @@ static const struct standard_args standard_args[] =
   { "-color", "--color", 5, 0},
   { "-no-splash", "--no-splash", 3, 0 },
   { "-no-desktop", "--no-desktop", 3, 0 },
+  /* The following two must be just above the file-name args, to get
+     them out of our way, but without mixing them with file names.  */
+  { "-temacs", "--temacs", 1, 1 },
+#ifdef HAVE_PDUMPER
+  { "-dump-file", "--dump-file", 1, 1 },
+#endif
 #ifdef HAVE_NS
   { "-NSAutoLaunch", 0, 5, 1 },
   { "-NXAutoLaunch", 0, 5, 1 },
@@ -2019,6 +2389,10 @@ all of which are called before Emacs is actually killed.  */
 {
   int exit_code;
 
+#ifdef HAVE_LIBSYSTEMD
+  sd_notify(0, "STOPPING=1");
+#endif /* HAVE_LIBSYSTEMD */
+
   /* Fsignal calls emacs_abort () if it sees that waiting_for_input is
      set.  */
   waiting_for_input = 0;
@@ -2048,10 +2422,10 @@ all of which are called before Emacs is actually killed.  */
       unlink (SSDATA (listfile));
     }
 
-  if (INTEGERP (arg))
-    exit_code = (XINT (arg) < 0
-		 ? XINT (arg) | INT_MIN
-		 : XINT (arg) & INT_MAX);
+  if (FIXNUMP (arg))
+    exit_code = (XFIXNUM (arg) < 0
+		 ? XFIXNUM (arg) | INT_MIN
+		 : XFIXNUM (arg) & INT_MAX);
   else
     exit_code = EXIT_SUCCESS;
   exit (exit_code);
@@ -2080,23 +2454,29 @@ shut_down_emacs (int sig, Lisp_Object stuff)
 
   /* If we are controlling the terminal, reset terminal modes.  */
 #ifndef DOS_NT
-  {
-    pid_t pgrp = getpgrp ();
-    pid_t tpgrp = tcgetpgrp (0);
-    if ((tpgrp != -1) && tpgrp == pgrp)
-      {
-	reset_all_sys_modes ();
-	if (sig && sig != SIGTERM)
-	  {
-	    static char const format[] = "Fatal error %d: ";
-	    char buf[sizeof format - 2 + INT_STRLEN_BOUND (int)];
-	    int buflen = sprintf (buf, format, sig);
-	    char const *sig_desc = safe_strsignal (sig);
+  pid_t tpgrp = tcgetpgrp (STDIN_FILENO);
+  if (tpgrp != -1 && tpgrp == getpgrp ())
+    {
+      reset_all_sys_modes ();
+      if (sig && sig != SIGTERM)
+	{
+	  static char const fmt[] = "Fatal error %d: %n%s\n";
+	  char buf[max ((sizeof fmt - sizeof "%d%n%s\n"
+			 + INT_STRLEN_BOUND (int) + 1),
+			min (PIPE_BUF, MAX_ALLOCA))];
+	  char const *sig_desc = safe_strsignal (sig);
+	  int nlen;
+	  int buflen = snprintf (buf, sizeof buf, fmt, sig, &nlen, sig_desc);
+	  if (0 <= buflen && buflen < sizeof buf)
 	    emacs_write (STDERR_FILENO, buf, buflen);
-	    emacs_write (STDERR_FILENO, sig_desc, strlen (sig_desc));
-	  }
-      }
-  }
+	  else
+	    {
+	      emacs_write (STDERR_FILENO, buf, nlen);
+	      emacs_write (STDERR_FILENO, sig_desc, strlen (sig_desc));
+	      emacs_write (STDERR_FILENO, fmt + sizeof fmt - 2, 1);
+	    }
+	}
+    }
 #else
   fflush (stdout);
   reset_all_sys_modes ();
@@ -2141,7 +2521,7 @@ shut_down_emacs (int sig, Lisp_Object stuff)
 
 
 
-#ifndef CANNOT_DUMP
+#ifdef HAVE_UNEXEC
 
 #include "unexec.h"
 
@@ -2162,26 +2542,29 @@ You must run Emacs in batch mode in order to dump it.  */)
   if (! noninteractive)
     error ("Dumping Emacs works only in batch mode");
 
-  if (!might_dump)
-    error ("Emacs can be dumped only once");
+  if (dumped_with_unexec_p ())
+    error ("Emacs can be dumped using unexec only once");
 
-#if defined GNU_LINUX && !defined CANNOT_DUMP
+  if (definitely_will_not_unexec_p ())
+    error ("This Emacs instance was not started in temacs mode");
+
+# if defined GNU_LINUX && defined HAVE_UNEXEC
 
   /* Warn if the gap between BSS end and heap start is larger than this.  */
-# define MAX_HEAP_BSS_DIFF (1024*1024)
+#  define MAX_HEAP_BSS_DIFF (1024 * 1024)
 
   if (heap_bss_diff > MAX_HEAP_BSS_DIFF)
-    {
-      fprintf (stderr, "**************************************************\n");
-      fprintf (stderr, "Warning: Your system has a gap between BSS and the\n");
-      fprintf (stderr, "heap (%"pMu" bytes).  This usually means that exec-shield\n",
-               heap_bss_diff);
-      fprintf (stderr, "or something similar is in effect.  The dump may\n");
-      fprintf (stderr, "fail because of this.  See the section about\n");
-      fprintf (stderr, "exec-shield in etc/PROBLEMS for more information.\n");
-      fprintf (stderr, "**************************************************\n");
+    fprintf (stderr,
+	     ("**************************************************\n"
+	      "Warning: Your system has a gap between BSS and the\n"
+	      "heap (%"PRIuMAX" bytes). This usually means that exec-shield\n"
+	      "or something similar is in effect.  The dump may\n"
+	      "fail because of this.  See the section about\n"
+	      "exec-shield in etc/PROBLEMS for more information.\n"
+	      "**************************************************\n"),
+	     heap_bss_diff);
     }
-#endif /* GNU_LINUX */
+# endif
 
   /* Bind `command-line-processed' to nil before dumping,
      so that the dumped Emacs will process its command line
@@ -2205,7 +2588,7 @@ You must run Emacs in batch mode in order to dump it.  */)
   tem = Vpurify_flag;
   Vpurify_flag = Qnil;
 
-#ifdef HYBRID_MALLOC
+# ifdef HYBRID_MALLOC
   {
     static char const fmt[] = "%d of %d static heap bytes used";
     char buf[sizeof fmt + 2 * (INT_STRLEN_BOUND (int) - 2)];
@@ -2214,18 +2597,21 @@ You must run Emacs in batch mode in order to dump it.  */)
     /* Don't log messages, because at this point buffers cannot be created.  */
     message1_nolog (buf);
   }
-#endif
+# endif
 
-  fflush_unlocked (stdout);
+  fflush (stdout);
   /* Tell malloc where start of impure now is.  */
   /* Also arrange for warnings when nearly out of space.  */
-#if !defined SYSTEM_MALLOC && !defined HYBRID_MALLOC
-#ifndef WINDOWSNT
+# if !defined SYSTEM_MALLOC && !defined HYBRID_MALLOC && !defined WINDOWSNT
   /* On Windows, this was done before dumping, and that once suffices.
      Meanwhile, my_edata is not valid on Windows.  */
   memory_warnings (my_edata, malloc_warning);
-#endif /* not WINDOWSNT */
-#endif /* not SYSTEM_MALLOC and not HYBRID_MALLOC */
+# endif
+
+  struct gflags old_gflags = gflags;
+  gflags.will_dump_ = false;
+  gflags.will_dump_with_unexec_ = false;
+  gflags.dumped_with_unexec_ = true;
 
   alloc_unexec_pre ();
 
@@ -2233,19 +2619,19 @@ You must run Emacs in batch mode in order to dump it.  */)
 
   alloc_unexec_post ();
 
-#ifdef WINDOWSNT
+  gflags = old_gflags;
+
+# ifdef WINDOWSNT
   Vlibrary_cache = Qnil;
-#endif
-#ifdef HAVE_WINDOW_SYSTEM
-  reset_image_types ();
-#endif
+# endif
 
   Vpurify_flag = tem;
 
   return unbind_to (count, Qnil);
 }
 
-#endif /* not CANNOT_DUMP */
+#endif
+
 
 #if HAVE_SETLOCALE
 /* Recover from setlocale (LC_ALL, "").  */
@@ -2384,7 +2770,7 @@ decode_env_path (const char *evarname, const char *defalt, bool empty)
 	      }
 	  }
 	else if (cnv_result != 0 && d > path_utf8)
-	  d[-1] = '\0';	/* remove last semi-colon and null-terminate PATH */
+	  d[-1] = '\0';	/* remove last semi-colon and NUL-terminate PATH */
       } while (q);
       path_copy = path_utf8;
 #else  /* MSDOS */
@@ -2412,7 +2798,7 @@ decode_env_path (const char *evarname, const char *defalt, bool empty)
               && strncmp (path, emacs_dir_env, emacs_dir_len) == 0)
             element = Fexpand_file_name (Fsubstring
                                          (element,
-                                          make_number (emacs_dir_len),
+                                          make_fixnum (emacs_dir_len),
                                           Qnil),
                                          build_unibyte_string (emacs_dir));
 #endif
@@ -2479,6 +2865,13 @@ from the parent process and its tty file descriptors.  */)
     error ("This function can only be called after loading the init files");
 #ifndef WINDOWSNT
 
+  if (daemon_type == 1)
+    {
+#ifdef HAVE_LIBSYSTEMD
+      sd_notify(0, "READY=1");
+#endif /* HAVE_LIBSYSTEMD */
+    }
+
   if (daemon_type == 2)
     {
       int nfd;
@@ -2526,7 +2919,7 @@ syms_of_emacs (void)
   DEFSYM (Qkill_emacs, "kill-emacs");
   DEFSYM (Qkill_emacs_hook, "kill-emacs-hook");
 
-#ifndef CANNOT_DUMP
+#ifdef HAVE_UNEXEC
   defsubr (&Sdump_emacs);
 #endif
 
@@ -2574,7 +2967,7 @@ Don't rely on it for testing whether a feature you want to use is available.  */
   Vsystem_configuration_features = build_string (EMACS_CONFIG_FEATURES);
 
   DEFVAR_BOOL ("noninteractive", noninteractive1,
-	       doc: /* Non-nil means Emacs is running without interactive terminal.  */);
+               doc: /* Non-nil means Emacs is running without interactive terminal.  */);
 
   DEFVAR_LISP ("kill-emacs-hook", Vkill_emacs_hook,
 	       doc: /* Hook run when `kill-emacs' is called.
@@ -2658,6 +3051,9 @@ component .BUILD is present.  This is now stored separately in
   DEFVAR_LISP ("report-emacs-bug-address", Vreport_emacs_bug_address,
 	       doc: /* Address of mailing list for GNU Emacs bugs.  */);
   Vreport_emacs_bug_address = build_string (emacs_bugreport);
+
+  DEFVAR_LISP ("dump-mode", Vdump_mode,
+               doc: /* Non-nil when Emacs is dumping itself.  */);
 
   DEFVAR_LISP ("dynamic-library-alist", Vdynamic_library_alist,
     doc: /* Alist of dynamic libraries vs external files implementing them.

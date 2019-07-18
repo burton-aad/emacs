@@ -1,6 +1,6 @@
 ;;; elint.el --- Lint Emacs Lisp -*- lexical-binding: t -*-
 
-;; Copyright (C) 1997, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1997, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Peter Liljenberg <petli@lysator.liu.se>
 ;; Created: May 1997
@@ -554,6 +554,7 @@ Return nil if there are no more forms, t otherwise."
     (defcustom . elint-check-defcustom-form)
     (macro . elint-check-macro-form)
     (condition-case . elint-check-condition-case-form)
+    (condition-case-unless-debug . elint-check-condition-case-form)
     (if . elint-check-conditional-form)
     (when . elint-check-conditional-form)
     (unless . elint-check-conditional-form)
@@ -937,7 +938,7 @@ Does basic handling of `featurep' tests."
 	  ((and (memq func '(unless or))
 		(equal test '(featurep (quote emacs)))))
 	  ((and (eq func 'if)
-		(or (null test)	      ; eg custom-browse-insert-prefix
+		(or (null test)
 		    (member test '((featurep (quote xemacs))
 				   (not (featurep (quote emacs)))))
 		    (and (eq (car-safe test) 'and)

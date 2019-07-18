@@ -1,6 +1,6 @@
 ;;; w32-win.el --- parse switches controlling interface with W32 window system -*- lexical-binding: t -*-
 
-;; Copyright (C) 1993-1994, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1993-1994, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Kevin Gallo
 ;; Keywords: terminals
@@ -170,6 +170,15 @@ the last file dropped is selected."
 ;; new layout/language selected by the user.
 (global-set-key [language-change] 'ignore)
 
+;; Some Windows applications send the 'noname' (VK_NONAME) pseudo-key
+;; to prevent Windows from sleeping.  We want to ignore these key
+;; events, to avoid annoying users by ringing the bell and announcing
+;; that the key is not bound.
+(global-set-key [noname]   'ignore)
+(global-set-key [C-noname] 'ignore)
+(global-set-key [M-noname] 'ignore)
+
+
 (defvar x-resource-name)
 
 
@@ -270,6 +279,7 @@ See the documentation of `create-fontset-from-fontset-spec' for the format.")
        '(svg "librsvg-2-2.dll")
        '(gdk-pixbuf "libgdk_pixbuf-2.0-0.dll")
        '(glib "libglib-2.0-0.dll")
+       '(gio "libgio-2.0-0.dll")
        '(gobject "libgobject-2.0-0.dll")
        (if (>= libgnutls-version 30400)
 	   '(gnutls "libgnutls-30.dll")

@@ -1,6 +1,6 @@
 /* Declarations having to do with GNU Emacs syntax tables.
 
-Copyright (C) 1985, 1993-1994, 1997-1998, 2001-2018 Free Software
+Copyright (C) 1985, 1993-1994, 1997-1998, 2001-2019 Free Software
 Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -118,7 +118,7 @@ INLINE int
 syntax_property_with_flags (int c, bool via_property)
 {
   Lisp_Object ent = syntax_property_entry (c, via_property);
-  return CONSP (ent) ? XINT (XCAR (ent)) : Swhitespace;
+  return CONSP (ent) ? XFIXNUM (XCAR (ent)) : Swhitespace;
 }
 INLINE int
 SYNTAX_WITH_FLAGS (int c)

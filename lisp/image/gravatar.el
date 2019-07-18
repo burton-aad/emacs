@@ -1,6 +1,6 @@
 ;;; gravatar.el --- Get Gravatars
 
-;; Copyright (C) 2010-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2010-2019 Free Software Foundation, Inc.
 
 ;; Author: Julien Danjou <julien@danjou.info>
 ;; Keywords: news
@@ -107,10 +107,8 @@ You can provide a list of argument to pass to CB in CBARGS."
 	(let ((args (list url
 			  'gravatar-retrieved
 			  (list cb (when cbargs cbargs)))))
-	  (when (> (length (if (featurep 'xemacs)
-			       (cdr (split-string (function-arglist 'url-retrieve)))
-			     (help-function-arglist 'url-retrieve)))
-		   4)
+	  (when (> (length (help-function-arglist 'url-retrieve))
+                   4)
 	    (setq args (nconc args (list t))))
 	  (apply #'url-retrieve args))
       (apply cb

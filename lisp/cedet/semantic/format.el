@@ -1,6 +1,6 @@
 ;;; semantic/format.el --- Routines for formatting tags
 
-;; Copyright (C) 1999-2005, 2007-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2005, 2007-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Keywords: syntax
@@ -67,7 +67,7 @@ COLOR indicates that the generated text should be colored using
 
 (defvar semantic-format-tag-custom-list
   (append '(radio)
-	  (mapcar (lambda (f) (list 'const f))
+	  (mapcar (lambda (f) (list 'function-item f))
 		  semantic-format-tag-functions)
 	  '(function))
   "A List used by customizable variables to choose a tag to text function.
@@ -92,12 +92,8 @@ Images can be used as icons instead of some types of text strings."
      (variable . font-lock-variable-name-face)
      (type . font-lock-type-face)
      ;; These are different between Emacsen.
-     (include . ,(if (featurep 'xemacs)
-		     'font-lock-preprocessor-face
-		   'font-lock-constant-face))
-     (package . ,(if (featurep 'xemacs)
-		     'font-lock-preprocessor-face
-		   'font-lock-constant-face))
+     (include . ,'font-lock-constant-face)
+     (package . , 'font-lock-constant-face)
      ;; Not a tag, but instead a feature of output
      (label . font-lock-string-face)
      (comment . font-lock-comment-face)
@@ -135,26 +131,23 @@ See that variable for details on adding new types."
 FACE-CLASS is a tag type found in `semantic-formatface-alist'.
 See that variable for details on adding new types."
   (let ((face (cdr-safe (assoc face-class semantic-format-face-alist)))
-	(newtext (concat precoloredtext))
-	)
-    (if (featurep 'xemacs)
-	(add-text-properties 0 (length newtext) (list 'face face) newtext)
-      (alter-text-property 0 (length newtext) 'face
-			   (lambda (current-face)
-			     (let ((cf
-				    (cond ((facep current-face)
-					   (list current-face))
-					  ((listp current-face)
-					   current-face)
-					  (t nil)))
-				   (nf
-				    (cond ((facep face)
-					   (list face))
-					  ((listp face)
-					   face)
-					  (t nil))))
-			       (append cf nf)))
-			   newtext))
+	(newtext (concat precoloredtext)))
+    (alter-text-property 0 (length newtext) 'face
+			 (lambda (current-face)
+			   (let ((cf
+				  (cond ((facep current-face)
+					 (list current-face))
+					((listp current-face)
+					 current-face)
+					(t nil)))
+				 (nf
+				  (cond ((facep face)
+					 (list face))
+					((listp face)
+					 face)
+					(t nil))))
+			     (append cf nf)))
+			 newtext)
     newtext))
 
 ;;; Function Arguments

@@ -1,6 +1,6 @@
 ;;; calc-tests.el --- tests for calc                 -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2014-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2014-2019 Free Software Foundation, Inc.
 
 ;; Author: Leo Liu <sdl.web@gmail.com>
 ;; Keywords: maint
@@ -62,11 +62,11 @@ An existing calc stack is reused, otherwise a new one is created."
 	(calc-top-n 1))
     (calc-pop 0)))
 
-(ert-deftest test-math-bignum ()
-  ;; bug#17556
-  (let ((n (math-bignum most-negative-fixnum)))
-    (should (math-negp n))
-    (should (cl-notany #'cl-minusp (cdr n)))))
+;; (ert-deftest test-math-bignum ()
+;;   ;; bug#17556
+;;   (let ((n (math-bignum most-negative-fixnum)))
+;;     (should (math-negp n))
+;;     (should (cl-notany #'cl-minusp (cdr n)))))
 
 (ert-deftest test-calc-remove-units ()
   (should (calc-tests-equal (calc-tests-simple #'calc-remove-units "-1 m") -1)))
@@ -86,9 +86,16 @@ An existing calc stack is reused, otherwise a new one is created."
 					       (math-read-expr "1m") "cm")
 			    '(* -100 (var cm var-cm)))))
 
+(ert-deftest calc-imaginary-i ()
+  "Test `math-imaginary-i' for non-special-const values."
+  (let ((var-i (calcFunc-polar (calcFunc-sqrt -1))))
+    (should (math-imaginary-i)))
+  (let ((var-i (calcFunc-sqrt -1)))
+    (should (math-imaginary-i))))
+
 (ert-deftest test-calc-23889 ()
   "Test for https://debbugs.gnu.org/23889 and 25652."
-  (skip-unless (>= math-bignum-digit-length 9))
+  (skip-unless t) ;; (>= math-bignum-digit-length 9))
   (dolist (mode '(deg rad))
     (let ((calc-angle-mode mode))
       ;; If user inputs angle units, then should ignore `calc-angle-mode'.
@@ -130,6 +137,62 @@ An existing calc stack is reused, otherwise a new one is created."
                         (number-to-string
                          (nth 1 (calcFunc-cos 1)))
                         0 4))))))
+
+(ert-deftest calc-test-trig ()
+  "Trigonometric simplification; bug#33052."
+  (let ((calc-angle-mode 'rad))
+    (let ((calc-symbolic-mode t))
+      (should (equal (math-simplify '(calcFunc-sin (/ (var pi var-pi) 4)))
+                     '(/ (calcFunc-sqrt 2) 2)))
+      (should (equal (math-simplify '(calcFunc-cos (/ (var pi var-pi) 4)))
+                     '(/ (calcFunc-sqrt 2) 2)))
+      (should (equal (math-simplify '(calcFunc-sec (/ (var pi var-pi) 4)))
+                     '(calcFunc-sqrt 2)))
+      (should (equal (math-simplify '(calcFunc-csc (/ (var pi var-pi) 4)))
+                     '(calcFunc-sqrt 2)))
+      (should (equal (math-simplify '(calcFunc-tan (/ (var pi var-pi) 3)))
+                     '(calcFunc-sqrt 3)))
+      (should (equal (math-simplify '(calcFunc-cot (/ (var pi var-pi) 3)))
+                     '(/ (calcFunc-sqrt 3) 3))))
+    (let ((calc-symbolic-mode nil))
+      (should (equal (math-simplify '(calcFunc-sin (/ (var pi var-pi) 4)))
+                     '(calcFunc-sin (/ (var pi var-pi) 4))))
+      (should (equal (math-simplify '(calcFunc-cos (/ (var pi var-pi) 4)))
+                     '(calcFunc-cos (/ (var pi var-pi) 4))))
+      (should (equal (math-simplify '(calcFunc-sec (/ (var pi var-pi) 4)))
+                     '(calcFunc-sec (/ (var pi var-pi) 4))))
+      (should (equal (math-simplify '(calcFunc-csc (/ (var pi var-pi) 4)))
+                     '(calcFunc-csc (/ (var pi var-pi) 4))))
+      (should (equal (math-simplify '(calcFunc-tan (/ (var pi var-pi) 3)))
+                     '(calcFunc-tan (/ (var pi var-pi) 3))))
+      (should (equal (math-simplify '(calcFunc-cot (/ (var pi var-pi) 3)))
+                     '(calcFunc-cot (/ (var pi var-pi) 3)))))))
+
+(ert-deftest calc-test-format-radix ()
+  "Test integer formatting (bug#36689)."
+  (let ((calc-group-digits nil))
+    (let ((calc-number-radix 10))
+      (should (equal (math-format-number 12345678901) "12345678901")))
+    (let ((calc-number-radix 2))
+      (should (equal (math-format-number 12345) "2#11000000111001")))
+    (let ((calc-number-radix 8))
+      (should (equal (math-format-number 12345678901) "8#133767016065")))
+    (let ((calc-number-radix 16))
+      (should (equal (math-format-number 12345678901) "16#2DFDC1C35")))
+    (let ((calc-number-radix 36))
+      (should (equal (math-format-number 12345678901) "36#5O6AQT1"))))
+  (let ((calc-group-digits t))
+    (let ((calc-number-radix 10))
+      (should (equal (math-format-number 12345678901) "12,345,678,901")))
+    (let ((calc-number-radix 2))
+      (should (equal (math-format-number 12345) "2#11,0000,0011,1001")))
+    (let ((calc-number-radix 8))
+      (should (equal (math-format-number 12345678901) "8#133,767,016,065")))
+    (let ((calc-number-radix 16))
+      (should (equal (math-format-number 12345678901) "16#2,DFDC,1C35")))
+    (let ((calc-number-radix 36))
+      (should (equal (math-format-number 12345678901) "36#5,O6A,QT1")))))
+
 
 (provide 'calc-tests)
 ;;; calc-tests.el ends here

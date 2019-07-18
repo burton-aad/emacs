@@ -1,6 +1,6 @@
 ;;; pcomplete.el --- programmable completion -*- lexical-binding: t -*-
 
-;; Copyright (C) 1999-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: John Wiegley <johnw@gnu.org>
 ;; Keywords: processes abbrev
@@ -444,10 +444,28 @@ Same as `pcomplete' but using the standard completion UI."
            ;; table which expects strings using a prefix from the
            ;; buffer's text but internally uses the corresponding
            ;; prefix from pcomplete-stub.
+           ;;
+           (argbeg (pcomplete-begin))
+           ;; When completing an envvar within an argument in Eshell
+           ;; (e.g. "cd /home/$US TAB"), `pcomplete-stub' will just be
+           ;; "US" whereas `argbeg' will point to the first "/".
+           ;; We could rely on c-t-subvert to handle the difference,
+           ;; but we try here to guess the "real" beginning so as to
+           ;; rely less on c-t-subvert.
            (beg (max (- (point) (length pcomplete-stub))
-                     (pcomplete-begin)))
-           (buftext (pcomplete-unquote-argument
-                     (buffer-substring beg (point)))))
+                     argbeg))
+           buftext)
+      ;; Try and improve our guess of `beg' in case the difference
+      ;; between pcomplete-stub and the buffer's text is simply due to
+      ;; some chars removed by unquoting.  Again, this is not
+      ;; indispensable but reduces the reliance on c-t-subvert and
+      ;; improves corner case behaviors.
+      (while (progn (setq buftext (pcomplete-unquote-argument
+                                   (buffer-substring beg (point))))
+                    (and (> beg argbeg)
+                         (> (length pcomplete-stub) (length buftext))))
+        (setq beg (max argbeg (- beg (- (length pcomplete-stub)
+                                        (length buftext))))))
       (when completions
         (let ((table
                (completion-table-with-quoting
@@ -768,7 +786,7 @@ this is `comint-dynamic-complete-functions'."
 	(push (point) begins)
         (while
             (progn
-              (skip-chars-forward "^ \t\n\\")
+              (skip-chars-forward "^ \t\n\\\\")
               (when (eq (char-after) ?\\)
                 (forward-char 1)
                 (unless (eolp)
@@ -1066,18 +1084,10 @@ See the documentation for `pcomplete-here'."
   (setq pcomplete-last-window-config nil
 	pcomplete-window-restore-timer nil))
 
-;; Abstractions so that the code below will work for both Emacs 20 and
-;; XEmacs 21
+(define-obsolete-function-alias 'pcomplete-event-matches-key-specifier-p
+  'eq "27.1")
 
-(defalias 'pcomplete-event-matches-key-specifier-p
-  (if (featurep 'xemacs)
-      'event-matches-key-specifier-p
-  'eq))
-
-(defun pcomplete-read-event (&optional prompt)
-  (if (fboundp 'read-event)
-      (read-event prompt)
-    (aref (read-key-sequence prompt) 0)))
+(define-obsolete-function-alias 'pcomplete-read-event 'read-event "27.1")
 
 (defun pcomplete-show-completions (completions)
   "List in help buffer sorted COMPLETIONS.
@@ -1094,15 +1104,15 @@ Typing SPC flushes the help buffer."
     (prog1
         (catch 'done
           (while (with-current-buffer (get-buffer "*Completions*")
-                   (setq event (pcomplete-read-event)))
+                   (setq event (read-event)))
             (cond
-             ((pcomplete-event-matches-key-specifier-p event ?\s)
+             ((eq event ?\s)
               (set-window-configuration pcomplete-last-window-config)
               (setq pcomplete-last-window-config nil)
               (throw 'done nil))
-             ((or (pcomplete-event-matches-key-specifier-p event 'tab)
+             ((or (eq event 'tab)
                   ;; Needed on a terminal
-                  (pcomplete-event-matches-key-specifier-p event 9))
+                  (eq event 9))
               (let ((win (or (get-buffer-window "*Completions*" 0)
                              (display-buffer "*Completions*"
                                              'not-this-window))))

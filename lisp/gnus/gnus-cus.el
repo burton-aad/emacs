@@ -1,6 +1,6 @@
 ;;; gnus-cus.el --- customization commands for Gnus
 
-;; Copyright (C) 1996, 1999-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1996, 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: Per Abrahamsen <abraham@dina.kvl.dk>
 ;; Keywords: news
@@ -253,7 +253,12 @@ DOC is a documentation string for the parameter.")
 
 (defconst gnus-extra-group-parameters
   '((uidvalidity (string :tag "IMAP uidvalidity") "\
-Server-assigned value attached to IMAP groups, used to maintain consistency."))
+Server-assigned value attached to IMAP groups, used to maintain consistency.")
+    (modseq (string :tag "modseq") "modseq")
+    (active (cons :tag "active" (integer :tag "min") (integer :tag "max"))
+	    "active")
+    (permanent-flags (repeat :tag "Permanent Flags" (symbol :tag "Flag"))
+		     "Permanent Flags"))
   "Alist of group parameters that are not also topic parameters.
 
 Each entry has the form (NAME TYPE DOC), where NAME is the parameter
@@ -369,7 +374,7 @@ category."))
     (unless (or topic (setq info (gnus-get-info group)))
       (error "Killed group; can't be edited"))
     ;; Ready.
-    (gnus-kill-buffer (gnus-get-buffer-create "*Gnus Customize*"))
+    (gnus-kill-buffer "*Gnus Customize*")
     (switch-to-buffer (gnus-get-buffer-create "*Gnus Customize*"))
     (gnus-custom-mode)
     (make-local-variable 'gnus-custom-group)
@@ -1021,9 +1026,7 @@ articles in the thread.
                         (cons 'agent-low-score gnus-agent-low-score)
                         (cons 'agent-high-score gnus-agent-high-score))))
 
-    (let ((old (get-buffer "*Gnus Agent Category Customize*")))
-      (when old
-        (gnus-kill-buffer old)))
+    (gnus-kill-buffer "*Gnus Agent Category Customize*")
     (switch-to-buffer (gnus-get-buffer-create
                        "*Gnus Agent Category Customize*"))
 
@@ -1051,7 +1054,7 @@ articles in the thread.
            (when (get-buffer gnus-category-buffer)
              (switch-to-buffer (get-buffer gnus-category-buffer))
              (gnus-category-list)))
-                       "Done")
+         "Done")
         (widget-insert
          "\n    Note: Empty fields default to the customizable global\
  variables.\n\n")

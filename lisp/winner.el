@@ -1,6 +1,6 @@
 ;;; winner.el --- Restore old window configurations
 
-;; Copyright (C) 1997-1998, 2001-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1997-1998, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Ivar Rummelhoff <ivarru@math.uio.no>
 ;; Created: 27 Feb 1997
@@ -28,13 +28,7 @@
 ;; windows) so that the changes can be "undone" using the command
 ;; `winner-undo'.  By default this one is bound to the key sequence
 ;; ctrl-c left.  If you change your mind (while undoing), you can
-;; press ctrl-c right (calling `winner-redo').  Even though it uses
-;; some features of Emacs20.3, winner.el should also work with
-;; Emacs19.34 and XEmacs20, provided that the installed version of
-;; custom is not obsolete.
-
-;; Winner mode was improved August 1998.
-;; Further improvements February 2002.
+;; press ctrl-c right (calling `winner-redo').
 
 ;;; Code:
 
@@ -63,21 +57,22 @@
 
 (defcustom winner-dont-bind-my-keys nil
   "Non-nil means do not bind keys in Winner mode."
-  :type  'boolean
-  :group 'winner)
+  :type 'boolean)
 
 (defcustom winner-ring-size 200
   "Maximum number of stored window configurations per frame."
-  :type  'integer
-  :group 'winner)
+  :type 'integer)
 
 (defcustom winner-boring-buffers '("*Completions*")
   "List of buffer names whose windows `winner-undo' will not restore.
 You may want to include buffer names such as *Help*, *Apropos*,
 *Buffer List*, *info* and *Compile-Log*."
-  :type '(repeat string)
-  :group 'winner)
+  :type '(repeat string))
 
+(defcustom winner-boring-buffers-regexp nil
+  "`winner-undo' will not restore windows with buffers matching this regexp."
+  :type 'string
+  :version "27.1")
 
 
 ;;;; Saving old configurations (internal variables and subroutines)
@@ -279,8 +274,9 @@ You may want to include buffer names such as *Help*, *Apropos*,
 
 ;; Make sure point does not end up in the minibuffer and delete
 ;; windows displaying dead or boring buffers
-;; (c.f. `winner-boring-buffers').  Return nil if all the windows
-;; should be deleted.  Preserve correct points and marks.
+;; (c.f. `winner-boring-buffers') and `winner-boring-buffers-regexp'.
+;; Return nil if all the windows should be deleted.  Preserve correct
+;; points and marks.
 (defun winner-set (conf)
   ;; For the format of `conf', see `winner-conf'.
   (let* ((buffers nil)
@@ -297,10 +293,23 @@ You may want to include buffer names such as *Help*, *Apropos*,
       ;; Restore points
       (dolist (win (winner-sorted-window-list))
         (unless (and (pop alive)
-                     (setf (window-point win)
-                           (winner-get-point (window-buffer win) win))
-                     (not (member (buffer-name (window-buffer win))
-                                  winner-boring-buffers)))
+                     (let* ((buf   (window-buffer win))
+                            (pos   (winner-get-point (window-buffer win) win))
+                            (entry (assq buf (window-prev-buffers win))))
+                       ;; Try to restore point of buffer in the selected
+                       ;; window (Bug#23621).
+                       (let ((marker (nth 2 entry)))
+                         (when (and switch-to-buffer-preserve-window-point
+                                    marker
+                                    (not (= marker pos)))
+                           (setq pos marker))
+                         (setf (window-point win) pos)))
+		     (not (or (member (buffer-name (window-buffer win))
+				      winner-boring-buffers)
+			      (and winner-boring-buffers-regexp
+				   (string-match
+				    winner-boring-buffers-regexp
+				    (buffer-name (window-buffer win)))))))
           (push win xwins)))            ; delete this window
 
       ;; Restore marks
@@ -317,10 +326,10 @@ You may want to include buffer names such as *Help*, *Apropos*,
       ;; Return t if this is still a possible configuration.
       (or (null xwins)
 	  (progn
-            (mapc 'delete-window (cdr xwins)) ; delete all but one
-            (unless (one-window-p t)
-              (delete-window (car xwins))
-              t))))))
+	    (mapc 'delete-window (cdr xwins)) ; delete all but one
+	    (unless (one-window-p t)
+	      (delete-window (car xwins))
+	      t))))))
 
 
 

@@ -1,6 +1,6 @@
 ;;; nsm.el --- Network Security Manager
 
-;; Copyright (C) 2014-2018 Free Software Foundation, Inc.
+;; Copyright (C) 2014-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: encryption, security, network
@@ -26,7 +26,7 @@
 
 (require 'cl-lib)
 (require 'rmc)                       ; read-multiple-choice
-(require 'subr-x)
+(eval-when-compile (require 'subr-x))
 
 (defvar nsm-permanent-host-settings nil)
 (defvar nsm-temporary-host-settings nil)
@@ -149,11 +149,6 @@ unencrypted."
 	     (not (nsm-new-fingerprint-ok-p host port status)))
 	(delete-process process)
 	nil)
-       ((>= (nsm-level network-security-level) (nsm-level 'high))
-	;; Save the host fingerprint so that we can check it the
-	;; next time we connect.
-	(nsm-save-host host port status 'fingerprint 'always)
-	process)
        (t
 	process)))
 
@@ -365,29 +360,34 @@ HOST PORT STATUS OPTIONAL-PARAMETER.")
 	t))))
 
 (defun nsm-query-user (message args cert)
-  (let ((buffer (get-buffer-create "*Network Security Manager*")))
-    (save-window-excursion
-      ;; First format the certificate and warnings.
-      (with-help-window buffer
-        (with-current-buffer buffer
-          (erase-buffer)
-          (when (> (length cert) 0)
-            (insert cert "\n"))
-          (let ((start (point)))
-            (insert (apply #'format-message message args))
-            (goto-char start)
-            ;; Fill the first line of the message, which usually
-            ;; contains lots of explanatory text.
-            (fill-region (point) (line-end-position)))))
-      ;; Then ask the user what to do about it.
-      (unwind-protect
-          (cadr
-           (read-multiple-choice
-            "Continue connecting?"
-            '((?a "always" "Accept this certificate this session and for all future sessions.")
-              (?s "session only" "Accept this certificate this session only.")
-              (?n "no" "Refuse to use this certificate, and close the connection."))))
-        (kill-buffer buffer)))))
+  (catch 'return
+    (while t
+      (let ((buffer (get-buffer-create "*Network Security Manager*")))
+        (save-window-excursion
+          ;; First format the certificate and warnings.
+          (with-help-window buffer
+            (with-current-buffer buffer
+              (erase-buffer)
+              (when (> (length cert) 0)
+                (insert cert "\n"))
+              (let ((start (point)))
+                (insert (apply #'format-message message args))
+                (goto-char start)
+                ;; Fill the first line of the message, which usually
+                ;; contains lots of explanatory text.
+                (fill-region (point) (line-end-position)))))
+          ;; Then ask the user what to do about it.
+          (pcase (unwind-protect
+                     (cadr
+                      (read-multiple-choice
+                       "Continue connecting?"
+                       '((?a "always" "Accept this certificate this session and for all future sessions.")
+                         (?s "session only" "Accept this certificate this session only.")
+                         (?n "no" "Refuse to use this certificate, and close the connection.")
+                         (?r "reshow" "Reshow certificate information."))))
+                   (kill-buffer buffer))
+            ("reshow")
+            (val (throw 'return val))))))))
 
 (defun nsm-save-host (host port status what permanency)
   (let* ((id (nsm-id host port))

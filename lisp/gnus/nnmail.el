@@ -1,6 +1,6 @@
 ;;; nnmail.el --- mail support functions for the Gnus mail backends
 
-;; Copyright (C) 1995-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1995-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news, mail
@@ -34,8 +34,6 @@
 (require 'mm-util)
 (require 'gnus-int)
 
-(autoload 'gnus-add-buffer "gnus")
-(autoload 'gnus-kill-buffer "gnus")
 (autoload 'mail-send-and-exit "sendmail" nil t)
 
 (defgroup nnmail nil
@@ -489,7 +487,7 @@ Example:
     (from . "from\\|sender\\|resent-from")
     (nato . "to\\|cc\\|resent-to\\|resent-cc")
     (naany . "from\\|to\\|cc\\|sender\\|resent-from\\|resent-to\\|resent-cc")
-    (list . "list-id\\|list-post\\|x-mailing-list\||x-beenthere\\|x-loop"))
+    (list . "list-id\\|list-post\\|x-mailing-list\\|x-beenthere\\|x-loop"))
   "Alist of abbreviations allowed in `nnmail-split-fancy'."
   :group 'nnmail-split
   :type '(repeat (cons :format "%v" symbol regexp)))
@@ -567,6 +565,12 @@ using different case (i.e. mailing-list@domain vs Mailing-List@Domain)."
   :version "22.1"
   :group 'nnmail
   :type 'boolean)
+
+(defcustom nnmail-debug-splitting nil
+  "If non-nil, record mail splitting actions.
+These will be logged to the \"*nnmail split*\" buffer."
+  :type 'boolean
+  :version "27.1")
 
 ;;; Internal variables.
 
@@ -663,7 +667,7 @@ nn*-request-list should have been called before calling this function."
 	    (narrow-to-region (point) (point-at-eol))
 	    (setq group (read buffer))
 	    (unless (stringp group)
-	      (setq group (symbol-name group)))
+	      (setq group (encode-coding-string (symbol-name group) 'latin-1)))
 	    (if (and (numberp (setq max (read buffer)))
 		     (numberp (setq min (read buffer))))
 		(push (list group (cons min max))
@@ -1361,14 +1365,12 @@ See the documentation for the variable `nnmail-split-fancy' for details."
 
      ;; A group name.  Do the \& and \N subs into the string.
      ((stringp split)
-      (when nnmail-split-tracing
-	(push split nnmail-split-trace))
+      (nnmail-log-split split)
       (list (nnmail-expand-newtext split t)))
 
      ;; Junk the message.
      ((eq split 'junk)
-      (when nnmail-split-tracing
-	(push "junk" nnmail-split-trace))
+      (nnmail-log-split "junk")
       (list 'junk))
 
      ;; Builtin & operation.
@@ -1385,8 +1387,7 @@ See the documentation for the variable `nnmail-split-fancy' for details."
 
      ;; Builtin : operation.
      ((eq (car split) ':)
-      (when nnmail-split-tracing
-	(push split nnmail-split-trace))
+      (nnmail-log-split split)
       (nnmail-split-it (save-excursion (eval (cdr split)))))
 
      ;; Builtin ! operation.
@@ -1404,8 +1405,7 @@ See the documentation for the variable `nnmail-split-fancy' for details."
 	(while (and (goto-char end-point)
 		    (re-search-backward (cdr cached-pair) nil t))
 	  (setq match-data (match-data))
-	  (when nnmail-split-tracing
-	    (push split nnmail-split-trace))
+	  (nnmail-log-split split)
 	  (let ((split-rest (cddr split))
 		(end (match-end 0))
 		;; The searched regexp is \(\(FIELD\).*\)\(VALUE\).
@@ -1534,7 +1534,8 @@ See the documentation for the variable `nnmail-split-fancy' for details."
 	    (and (setq file (ignore-errors
 			      (symbol-value (intern (format "%s-active-file"
 							    backend)))))
-		 (setq file-time (nth 5 (file-attributes file)))
+		 (setq file-time (file-attribute-modification-time
+				  (file-attributes file)))
 		 (or (not
 		      (setq timestamp
 			    (condition-case ()
@@ -1542,11 +1543,8 @@ See the documentation for the variable `nnmail-split-fancy' for details."
 					       (format "%s-active-timestamp"
 						       backend)))
 			      (error 'none))))
-		     (not (consp timestamp))
-		     (equal timestamp '(0 0))
-		     (> (nth 0 file-time) (nth 0 timestamp))
-		     (and (= (nth 0 file-time) (nth 0 timestamp))
-			  (> (nth 1 file-time) (nth 1 timestamp))))))
+		     (eq timestamp 'none)
+		     (time-less-p timestamp file-time))))
 	(save-excursion
 	  (or (eq timestamp 'none)
 	      (set (intern (format "%s-active-timestamp" backend))
@@ -1565,8 +1563,7 @@ See the documentation for the variable `nnmail-split-fancy' for details."
 
 (defun nnmail-cache-open ()
   (if (or (not nnmail-treat-duplicates)
-	  (and nnmail-cache-buffer
-	       (buffer-name nnmail-cache-buffer)))
+          (buffer-live-p nnmail-cache-buffer))
       ()				; The buffer is open.
     (with-current-buffer
        (setq nnmail-cache-buffer
@@ -1578,9 +1575,8 @@ See the documentation for the variable `nnmail-split-fancy' for details."
       (current-buffer))))
 
 (defun nnmail-cache-close ()
-  (when (and nnmail-cache-buffer
-	     nnmail-treat-duplicates
-	     (buffer-name nnmail-cache-buffer)
+  (when (and nnmail-treat-duplicates
+             (buffer-live-p nnmail-cache-buffer)
 	     (buffer-modified-p nnmail-cache-buffer))
     (with-current-buffer nnmail-cache-buffer
       ;; Weed out the excess number of Message-IDs.
@@ -1884,7 +1880,7 @@ If TIME is nil, then return the cutoff time for oldness instead."
 	     (setq days (days-to-time days))
 	     ;; Compare the time with the current time.
 	     (if (null time)
-		 (time-subtract nil days)
+		 (time-since days)
 	       (ignore-errors (time-less-p days (time-since time)))))))))
 
 (declare-function gnus-group-mark-article-read "gnus-group" (group article))
@@ -2057,6 +2053,17 @@ Doesn't change point."
     (save-excursion
       (and (nnmail-search-unix-mail-delim-backward)
 	   (not (search-forward "\n\n" pos t))))))
+
+(defun nnmail-log-split (split)
+  (when nnmail-split-tracing
+    (push split nnmail-split-trace))
+  (when nnmail-debug-splitting
+    (with-current-buffer (get-buffer-create "*nnmail split*")
+      (goto-char (point-max))
+      (insert (format-time-string "%FT%T")
+	      " "
+	      (format "%S" split)
+	      "\n"))))
 
 (run-hooks 'nnmail-load-hook)
 

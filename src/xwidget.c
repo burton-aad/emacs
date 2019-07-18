@@ -1,6 +1,6 @@
 /* Support for embedding graphical components in a buffer.
 
-Copyright (C) 2011-2018 Free Software Foundation, Inc.
+Copyright (C) 2011-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -26,21 +26,29 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "frame.h"
 #include "keyboard.h"
 #include "gtkutil.h"
+#include "sysstdio.h"
 
 #include <webkit2/webkit2.h>
 #include <JavaScriptCore/JavaScript.h>
 
+/* Suppress GCC deprecation warnings starting in WebKitGTK+ 2.21.1 for
+   webkit_javascript_result_get_global_context and
+   webkit_javascript_result_get_value (Bug#33679).
+   FIXME: Use the JavaScriptCore GLib API instead, and remove this hack.  */
+#if WEBKIT_CHECK_VERSION (2, 21, 1) && GNUC_PREREQ (4, 2, 0)
+# pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 static struct xwidget *
 allocate_xwidget (void)
 {
-  return ALLOCATE_PSEUDOVECTOR (struct xwidget, height, PVEC_XWIDGET);
+  return ALLOCATE_PSEUDOVECTOR (struct xwidget, script_callbacks, PVEC_XWIDGET);
 }
 
 static struct xwidget_view *
 allocate_xwidget_view (void)
 {
-  return ALLOCATE_PSEUDOVECTOR (struct xwidget_view, redisplayed,
-                                PVEC_XWIDGET_VIEW);
+  return ALLOCATE_PSEUDOVECTOR (struct xwidget_view, w, PVEC_XWIDGET_VIEW);
 }
 
 #define XSETXWIDGET(a, b) XSETPSEUDOVECTOR (a, b, PVEC_XWIDGET)
@@ -78,17 +86,19 @@ Returns the newly constructed xwidget, or nil if construction fails.  */)
    Lisp_Object title, Lisp_Object width, Lisp_Object height,
    Lisp_Object arguments, Lisp_Object buffer)
 {
+  if (!xg_gtk_initialized)
+    error ("make-xwidget: GTK has not been initialized");
   CHECK_SYMBOL (type);
-  CHECK_NATNUM (width);
-  CHECK_NATNUM (height);
+  CHECK_FIXNAT (width);
+  CHECK_FIXNAT (height);
 
   struct xwidget *xw = allocate_xwidget ();
   Lisp_Object val;
   xw->type = type;
   xw->title = title;
   xw->buffer = NILP (buffer) ? Fcurrent_buffer () : Fget_buffer_create (buffer);
-  xw->height = XFASTINT (height);
-  xw->width = XFASTINT (width);
+  xw->height = XFIXNAT (height);
+  xw->width = XFIXNAT (width);
   xw->kill_without_query = false;
   XSETXWIDGET (val, xw);
   Vxwidget_list = Fcons (val, Vxwidget_list);
@@ -294,17 +304,21 @@ webkit_js_to_lisp (JSContextRef context, JSValueRef value)
     case kJSTypeBoolean:
       return (JSValueToBoolean (context, value)) ? Qt : Qnil;
     case kJSTypeNumber:
-      return make_number (JSValueToNumber (context, value, NULL));
+      return make_fixnum (JSValueToNumber (context, value, NULL));
     case kJSTypeObject:
       {
         if (JSValueIsArray (context, value))
           {
             JSStringRef pname = JSStringCreateWithUTF8CString("length");
-            JSValueRef len = JSObjectGetProperty (context, (JSObjectRef) value, pname, NULL);
-            EMACS_INT n = JSValueToNumber (context, len, NULL);
+	    JSValueRef len = JSObjectGetProperty (context, (JSObjectRef) value,
+						  pname, NULL);
+	    double dlen = JSValueToNumber (context, len, NULL);
             JSStringRelease(pname);
 
             Lisp_Object obj;
+	    if (! (0 <= dlen && dlen < PTRDIFF_MAX + 1.0))
+	      memory_full (SIZE_MAX);
+	    ptrdiff_t n = dlen;
             struct Lisp_Vector *p = allocate_vector (n);
 
             for (ptrdiff_t i = 0; i < n; ++i)
@@ -323,10 +337,12 @@ webkit_js_to_lisp (JSContextRef context, JSValueRef value)
             JSPropertyNameArrayRef properties =
               JSObjectCopyPropertyNames (context, (JSObjectRef) value);
 
-            ptrdiff_t n = JSPropertyNameArrayGetCount (properties);
+	    size_t n = JSPropertyNameArrayGetCount (properties);
             Lisp_Object obj;
 
             /* TODO: can we use a regular list here?  */
+	    if (PTRDIFF_MAX < n)
+	      memory_full (n);
             struct Lisp_Vector *p = allocate_vector (n);
 
             for (ptrdiff_t i = 0; i < n; ++i)
@@ -513,6 +529,10 @@ xwidget_init_view (struct xwidget *xww,
                    struct glyph_string *s,
                    int x, int y)
 {
+
+  if (!xg_gtk_initialized)
+    error ("xwidget_init_view: GTK has not been initialized");
+
   struct xwidget_view *xv = allocate_xwidget_view ();
   Lisp_Object val;
 
@@ -671,7 +691,8 @@ x_draw_xwidget_glyph_string (struct glyph_string *s)
   struct xwidget *xw = XXWIDGET (xwidget);				\
   if (!xw->widget_osr || !WEBKIT_IS_WEB_VIEW (xw->widget_osr))		\
     {									\
-      printf ("ERROR xw->widget_osr does not hold a webkit instance\n"); \
+      fputs ("ERROR xw->widget_osr does not hold a webkit instance\n",	\
+	     stdout);							\
       return Qnil;							\
     }
 
@@ -713,7 +734,7 @@ save_script_callback (struct xwidget *xw, Lisp_Object script, Lisp_Object fun)
 {
   Lisp_Object cbs = xw->script_callbacks;
   if (NILP (cbs))
-    xw->script_callbacks = cbs = Fmake_vector (make_number (32), Qnil);
+    xw->script_callbacks = cbs = make_nil_vector (32);
 
   /* Find first free index.  */
   ptrdiff_t idx;
@@ -767,8 +788,8 @@ DEFUN ("xwidget-resize", Fxwidget_resize, Sxwidget_resize, 3, 3, 0,
   CHECK_RANGED_INTEGER (new_width, 0, INT_MAX);
   CHECK_RANGED_INTEGER (new_height, 0, INT_MAX);
   struct xwidget *xw = XXWIDGET (xwidget);
-  int w = XFASTINT (new_width);
-  int h = XFASTINT (new_height);
+  int w = XFIXNAT (new_width);
+  int h = XFIXNAT (new_height);
 
   xw->width = w;
   xw->height = h;
@@ -811,8 +832,7 @@ Emacs allocated area accordingly.  */)
   CHECK_XWIDGET (xwidget);
   GtkRequisition requisition;
   gtk_widget_size_request (XXWIDGET (xwidget)->widget_osr, &requisition);
-  return list2 (make_number (requisition.width),
-		make_number (requisition.height));
+  return list2i (requisition.width, requisition.height);
 }
 
 DEFUN ("xwidgetp",
@@ -843,7 +863,7 @@ Currently [TYPE TITLE WIDTH HEIGHT].  */)
   CHECK_XWIDGET (xwidget);
   struct xwidget *xw = XXWIDGET (xwidget);
   return CALLN (Fvector, xw->type, xw->title,
-		make_natnum (xw->width), make_natnum (xw->height));
+		make_fixed_natnum (xw->width), make_fixed_natnum (xw->height));
 }
 
 DEFUN ("xwidget-view-info",
@@ -855,9 +875,9 @@ Currently [X Y CLIP_RIGHT CLIP_BOTTOM CLIP_TOP CLIP_LEFT].  */)
 {
   CHECK_XWIDGET_VIEW (xwidget_view);
   struct xwidget_view *xv = XXWIDGET_VIEW (xwidget_view);
-  return CALLN (Fvector, make_number (xv->x), make_number (xv->y),
-		make_number (xv->clip_right), make_number (xv->clip_bottom),
-		make_number (xv->clip_top), make_number (xv->clip_left));
+  return CALLN (Fvector, make_fixnum (xv->x), make_fixnum (xv->y),
+		make_fixnum (xv->clip_right), make_fixnum (xv->clip_bottom),
+		make_fixnum (xv->clip_top), make_fixnum (xv->clip_left));
 }
 
 DEFUN ("xwidget-view-model",
@@ -1013,8 +1033,6 @@ syms_of_xwidget (void)
   defsubr (&Sxwidget_plist);
   defsubr (&Sxwidget_buffer);
   defsubr (&Sset_xwidget_plist);
-
-  DEFSYM (Qxwidget, "xwidget");
 
   DEFSYM (QCxwidget, ":xwidget");
   DEFSYM (QCtitle, ":title");

@@ -1,6 +1,6 @@
 ;;; mm-decode.el --- Functions for decoding MIME things  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1998-2018 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;;	MORIOKA Tomohiko <morioka@jaist.ac.jp>
@@ -190,45 +190,45 @@ before the external MIME handler is invoked."
   :group 'mime-display)
 
 (defcustom mm-inline-media-tests
-  '(("image/p?jpeg"
+  `(("image/p?jpeg"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'jpeg handle)))
     ("image/png"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'png handle)))
     ("image/gif"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'gif handle)))
     ("image/tiff"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'tiff handle)))
     ("image/xbm"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'xbm handle)))
     ("image/x-xbitmap"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'xbm handle)))
     ("image/xpm"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'xpm handle)))
     ("image/x-xpixmap"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'xpm handle)))
     ("image/bmp"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'bmp handle)))
     ("image/x-portable-bitmap"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'pbm handle)))
     ("text/plain" mm-inline-text identity)
     ("text/enriched" mm-inline-text identity)
@@ -236,6 +236,7 @@ before the external MIME handler is invoked."
     ("text/x-patch" mm-display-patch-inline identity)
     ;; In case mime.types uses x-diff (as does Debian's mime-support-3.40).
     ("text/x-diff" mm-display-patch-inline identity)
+    ("application/x-patch" mm-display-patch-inline identity)
     ("application/emacs-lisp" mm-display-elisp-inline identity)
     ("application/x-emacs-lisp" mm-display-elisp-inline identity)
     ("application/x-shellscript" mm-display-shell-script-inline identity)
@@ -246,13 +247,14 @@ before the external MIME handler is invoked."
     ("text/x-org" mm-display-org-inline identity)
     ("text/html"
      mm-inline-text-html
-     (lambda (handle)
+     ,(lambda (_handle)
        mm-text-html-renderer))
     ("text/x-vcard"
      mm-inline-text-vcard
-     (lambda (handle)
+     ,(lambda (_handle)
        (or (featurep 'vcard)
 	   (locate-library "vcard"))))
+    ("text/calendar" gnus-icalendar-mm-inline identity)
     ("message/delivery-status" mm-inline-text identity)
     ("message/rfc822" mm-inline-message identity)
     ("message/partial" mm-inline-partial identity)
@@ -260,15 +262,6 @@ before the external MIME handler is invoked."
     ("text/.*" mm-inline-text identity)
     ("application/x-.?tar\\(-.*\\)?" mm-archive-dissect-and-inline identity)
     ("application/zip" mm-archive-dissect-and-inline identity)
-    ("audio/wav" mm-inline-audio
-     (lambda (handle)
-       (and (or (featurep 'nas-sound) (featurep 'native-sound))
-	    (device-sound-enabled-p))))
-    ("audio/au"
-     mm-inline-audio
-     (lambda (handle)
-       (and (or (featurep 'nas-sound) (featurep 'native-sound))
-	    (device-sound-enabled-p))))
     ("application/pgp-signature" ignore identity)
     ("application/x-pkcs7-signature" ignore identity)
     ("application/pkcs7-signature" ignore identity)
@@ -279,7 +272,7 @@ before the external MIME handler is invoked."
     ("multipart/related" ignore identity)
     ("image/.*"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (and (mm-valid-image-format-p 'imagemagick)
 	    (mm-with-unibyte-buffer
 	      (mm-insert-part handle)
@@ -302,8 +295,9 @@ before the external MIME handler is invoked."
 
 (defcustom mm-inlined-types
   '("image/.*" "text/.*" "message/delivery-status" "message/rfc822"
-    "message/partial" "message/external-body" "application/emacs-lisp"
-    "application/x-emacs-lisp"
+    "message/partial" "message/external-body"
+    "application/x-patch"
+    "application/emacs-lisp" "application/x-emacs-lisp"
     "application/pgp-signature" "application/x-pkcs7-signature"
     "application/pkcs7-signature" "application/x-pkcs7-mime"
     "application/pkcs7-mime"
@@ -331,6 +325,7 @@ a list of regexps."
 
 (defcustom mm-automatic-display
   '("text/plain" "text/enriched" "text/richtext" "text/html" "text/x-verbatim"
+    "text/calendar"
     "text/x-vcard" "image/.*" "message/delivery-status" "multipart/.*"
     "message/rfc822" "text/x-patch" "text/dns" "application/pgp-signature"
     "application/emacs-lisp" "application/x-emacs-lisp"
@@ -763,7 +758,7 @@ MIME-Version header before proceeding."
         (mb enable-multibyte-characters)
         beg)
     (goto-char (point-min))
-    (search-forward-regexp "^\n" nil t)
+    (search-forward-regexp "^\n" nil 'move) ;; There might be no body.
     (setq beg (point))
     (with-current-buffer
           (generate-new-buffer " *mm*")
@@ -890,6 +885,7 @@ external if displayed external."
 	    (when method
 	      (message "Viewing with %s" method))
 	    (let ((mm (current-buffer))
+		  (attachment-filename (mm-handle-filename handle))
 		  (non-viewer (assq 'non-viewer
 				    (mailcap-mime-info
 				     (mm-handle-media-type handle) t))))
@@ -897,8 +893,10 @@ external if displayed external."
 		  (if method
 		      (progn
 			(when (and (boundp 'gnus-summary-buffer)
-				   (bufferp gnus-summary-buffer)
-				   (buffer-name gnus-summary-buffer))
+                                   (buffer-live-p gnus-summary-buffer))
+			  (when attachment-filename
+			    (with-current-buffer mm
+			      (rename-buffer (format "*mm* %s" attachment-filename) t)))
 			  ;; So that we pop back to the right place, sort of.
 			  (switch-to-buffer gnus-summary-buffer)
 			  (switch-to-buffer mm))
@@ -1112,7 +1110,7 @@ external if displayed external."
 	  (mm-remove-part handle)))))))
 
 (defun mm-destroy-parts (handles)
-  "Remove the displayed MIME parts represented by HANDLES."
+  "Destroy the displayed MIME parts represented by HANDLES."
   (if (and (listp handles)
 	   (bufferp (car handles)))
       (mm-destroy-part handles)
@@ -1153,9 +1151,8 @@ external if displayed external."
 	  (ignore-errors (delete-file (car object)))
 	  (ignore-errors (delete-directory (file-name-directory
 					    (car object)))))
-	 ((bufferp object)
-	  (when (buffer-live-p object)
-	    (kill-buffer object)))))
+         ((buffer-live-p object)
+          (kill-buffer object))))
       (mm-handle-set-undisplayer handle nil))))
 
 (defun mm-display-inline (handle)

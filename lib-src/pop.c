@@ -1,6 +1,6 @@
 /* pop.c: client routines for talking to a POP3-protocol post-office server
 
-Copyright (C) 1991, 1993, 1996-1997, 1999, 2001-2018 Free Software
+Copyright (C) 1991, 1993, 1996-1997, 1999, 2001-2019 Free Software
 Foundation, Inc.
 
 Author: Jonathan Kamens <jik@security.ov.com>
@@ -30,8 +30,12 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "ntlib.h"
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501	/* for getaddrinfo stuff */
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#if defined __MINGW32_VERSION && __MINGW32_VERSION >= 5000002L
+# include <windows.h>
+#else
+# include <winsock2.h>
+#endif
+# include <ws2tcpip.h>
 #undef getaddrinfo
 #define getaddrinfo  sys_getaddrinfo
 #undef freeaddrinfo
@@ -281,7 +285,7 @@ pop_open (char *host, char *username, char *password, int flags)
   /*
    * I really shouldn't use the pop_error variable like this, but....
    */
-  if (strlen (username) > ERROR_MAX - 6)
+  if (strnlen (username, ERROR_MAX - 6 + 1) == ERROR_MAX - 6 + 1)
     {
       pop_close (server);
       strcpy (pop_error,
@@ -295,7 +299,7 @@ pop_open (char *host, char *username, char *password, int flags)
       return (0);
     }
 
-  if (strlen (password) > ERROR_MAX - 6)
+  if (strnlen (password, ERROR_MAX - 6 + 1) == ERROR_MAX - 6 + 1)
     {
       pop_close (server);
       strcpy (pop_error,
