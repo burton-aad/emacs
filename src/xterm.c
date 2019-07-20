@@ -1849,7 +1849,7 @@ x_draw_glyph_string_foreground (struct glyph_string *s)
 	  if (!(s->for_overlaps
 		|| (s->background_filled_p && s->hl != DRAW_CURSOR)))
 	    {
-	      int box_line_width = max (s->face->box_line_width, 0);
+	      int box_line_width = max (s->face->box_horizontal_line_width, 0);
 
 	      if (s->stippled_p)
 		{
