@@ -166,9 +166,9 @@
 	     :help-echo "Control box around text."
 	     (const :tag "Off" nil)
 	     (list :tag "Box"
-		   :value (:line-width (2 2) :color "grey75" :style released-button)
+		   :value (:line-width (2 . 2) :color "grey75" :style released-button)
                    (const :format "" :value :line-width)
-                   (list :tag "Width" :extra-offset 2
+                   (cons :tag "Width" :extra-offset 2
 		    (integer :tag "Vertical")
 		    (integer :tag "Horizontal"))
 		   (const :format "" :value :color)
