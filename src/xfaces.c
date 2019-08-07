@@ -2972,6 +2972,8 @@ FRAME 0 means change the face on all frames, and change the default
 	valid_p = XFIXNUM (value) != 0;
       else if (STRINGP (value))
 	valid_p = SCHARS (value) > 0;
+      else if (CONSP (value) && FIXNUMP (XCAR (value)) && FIXNUMP (XCDR (value)))
+	valid_p = true;
       else if (CONSP (value))
 	{
 	  Lisp_Object tem;
