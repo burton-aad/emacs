@@ -183,15 +183,19 @@
        (and real-value
 	    (let ((lwidth
 		   (or (and (consp real-value)
-			    (plist-get real-value :line-width))
+                            (if (listp (cdr real-value))
+			        (plist-get real-value :line-width)
+                              real-value))
 		       (and (integerp real-value) real-value)
-		       1))
+		       '(1 . 1)))
 		  (color
 		   (or (and (consp real-value) (plist-get real-value :color))
 		       (and (stringp real-value) real-value)
 		       nil))
 		  (style
 		   (and (consp real-value) (plist-get real-value :style))))
+              (if (integerp lwidth)
+                  (setq lwidth (cons (abs lwidth) lwidth)))
 	      (list :line-width lwidth :color color :style style))))
      ;; filter to make customized-value suitable for storing
      (lambda (cus-value)
