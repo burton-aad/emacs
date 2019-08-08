@@ -629,9 +629,12 @@ Optional fifth argument CASE-FOLD-P specifies the value of
   (let ((dired-marker-char (if unflag-p ?\s dired-marker-char)))
     (dired-mark-if
      (and
-      ;; not already marked
-      (= (following-char) ?\s)
-      ;; uninteresting
+      (if unflag-p
+          ;; Already marked.
+          (not (= (following-char) ?\s))
+        ;; Not already marked.
+        (= (following-char) ?\s))
+      ;; Interesting.
       (let ((fn (dired-get-filename localp t))
             ;; Match patterns case-insensitively on case-insensitive
             ;; systems
@@ -824,6 +827,7 @@ Also useful for `auto-mode-alist' like this:
 ;; install GNU zip's version of zcat.
 
 (autoload 'Man-support-local-filenames "man")
+(autoload 'vc-responsible-backend "vc")
 
 (defvar dired-guess-shell-alist-default
   (list
@@ -906,7 +910,10 @@ Also useful for `auto-mode-alist' like this:
 	 '(concat "znew" (if dired-guess-shell-gzip-quiet " -q")
 		  " " dired-guess-shell-znew-switches))
 
-   '("\\.patch\\'" "cat * | patch")
+   (list "\\.patch\\'"
+         '(if (eq (ignore-errors (vc-responsible-backend default-directory)) 'Git)
+              "cat * | git apply"
+            "cat * | patch"))
    (list "\\.patch\\.g?z\\'" "gunzip -qc * | patch"
 	 ;; Optional decompression.
 	 '(concat "gunzip" (if dired-guess-shell-gzip-quiet " -q")))

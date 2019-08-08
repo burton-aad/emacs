@@ -1205,6 +1205,36 @@ since CC Mode treats every identifier as an expression."
   ;; The operators as a flat list (without duplicates).
   t (c-filter-ops (c-lang-const c-operators) t t))
 
+(c-lang-defconst c-operator-re
+  ;; A regexp which matches any operator.
+  t (regexp-opt (c-lang-const c-operator-list)))
+(c-lang-defvar c-operator-re (c-lang-const c-operator-re))
+
+(c-lang-defconst c-bin-tern-operators
+  ;; All binary and ternary operators
+  t (c-filter-ops (c-lang-const c-operators)
+		  '(left-assoc right-assoc right-assoc-sequence)
+		  t))
+
+(c-lang-defconst c-unary-operators
+  ;; All unary operators.
+  t (c-filter-ops (c-lang-const c-operators)
+		  '(prefix postfix postfix-if-paren)
+		  t))
+
+(c-lang-defconst c-non-after-{}-operators
+  "Operators which can't appear after a block {..} construct."
+  t (c--set-difference (c-lang-const c-bin-tern-operators)
+		       (c-lang-const c-unary-operators)
+		       :test #'string-equal)
+  awk (remove "/" (c-lang-const c-non-after-{}-operators)))
+
+(c-lang-defconst c-non-after-{}-ops-re
+  ;; A regexp matching operators which can't appear after a block {..}
+  ;; construct.
+  t (regexp-opt (c-lang-const c-non-after-{}-operators)))
+(c-lang-defvar c-non-after-{}-ops-re (c-lang-const c-non-after-{}-ops-re))
+
 (c-lang-defconst c-overloadable-operators
   "List of the operators that are overloadable, in their \"identifier
 form\".  See also `c-op-identifier-prefix'."
@@ -1409,15 +1439,17 @@ operators."
 (c-lang-defvar c->-op-without->-cont-regexp
   (c-lang-const c->-op-without->-cont-regexp))
 
-(c-lang-defconst c-multichar->-op-not->>-regexp
-  ;; Regexp matching multichar tokens containing ">", except ">>"
+(c-lang-defconst c-multichar->-op-not->>->>>-regexp
+  ;; Regexp matching multichar tokens containing ">", except ">>" and ">>>"
   t (c-make-keywords-re nil
-      (delete ">>"
-	      (c-filter-ops (c-lang-const c-all-op-syntax-tokens)
-			    t
-			    "\\(.>\\|>.\\)"))))
-(c-lang-defvar c-multichar->-op-not->>-regexp
-  (c-lang-const c-multichar->-op-not->>-regexp))
+      (c--set-difference
+       (c-filter-ops (c-lang-const c-all-op-syntax-tokens)
+		     t
+		     "\\(.>\\|>.\\)")
+       '(">>" ">>>")
+       :test 'string-equal)))
+(c-lang-defvar c-multichar->-op-not->>->>>-regexp
+  (c-lang-const c-multichar->-op-not->>->>>-regexp))
 
 (c-lang-defconst c-:-op-cont-tokens
   ;; A list of second and subsequent characters of all multicharacter tokens
@@ -1442,11 +1474,55 @@ operators."
   t "^;{}?:")
 (c-lang-defvar c-stmt-delim-chars (c-lang-const c-stmt-delim-chars))
 
+(c-lang-defconst c-stmt-boundary-skip-chars
+  ;; Like `c-stmt-delim-chars', but augmented by "#" for languages with CPP
+  ;; constructs, and for C++ Mode, also by "[", to help deal with C++
+  ;; attributes.
+  t (if (c-lang-const c-opt-cpp-symbol)
+	(concat (substring (c-lang-const c-stmt-delim-chars) 0 1) ; "^"
+		(c-lang-const c-opt-cpp-symbol) ; usually #
+		(substring (c-lang-const c-stmt-delim-chars) 1)) ; ";{}?:"
+      (c-lang-const c-stmt-delim-chars))
+  c++ (concat (substring (c-lang-const c-stmt-boundary-skip-chars) 0 1) ; "^"
+	      "["
+	      (substring (c-lang-const c-stmt-boundary-skip-chars) 1))) ; ";{}?:"
+(c-lang-defvar c-stmt-boundary-skip-chars
+  (c-lang-const c-stmt-boundary-skip-chars))
+
+(c-lang-defconst c-stmt-boundary-skip-list
+  ;; The characters (apart from the initial ^) in `c-stmt-boundary-skip-chars'
+  ;; as a list of characters.
+  t (append (substring (c-lang-const c-stmt-boundary-skip-chars) 1) nil))
+(c-lang-defvar c-stmt-boundary-skip-list
+  (c-lang-const c-stmt-boundary-skip-list))
+
 (c-lang-defconst c-stmt-delim-chars-with-comma
   ;; Variant of `c-stmt-delim-chars' that additionally contains ','.
   t    "^;,{}?:")
 (c-lang-defvar c-stmt-delim-chars-with-comma
   (c-lang-const c-stmt-delim-chars-with-comma))
+
+(c-lang-defconst c-stmt-boundary-skip-chars-with-comma
+  ;; Variant of `c-stmt-boundary-skip-chars' also containing ','.
+  t (if (c-lang-const c-opt-cpp-symbol)
+	(concat (substring (c-lang-const c-stmt-delim-chars-with-comma) 0 1)
+		(c-lang-const c-opt-cpp-symbol) ; usually #
+		(substring (c-lang-const c-stmt-delim-chars-with-comma) 1))
+      (c-lang-const c-stmt-delim-chars-with-comma))
+  c++ (concat
+       (substring (c-lang-const c-stmt-boundary-skip-chars-with-comma) 0 1) ; "^"
+       "["
+       (substring (c-lang-const c-stmt-boundary-skip-chars-with-comma) 1))) ; ";,{}?:"
+(c-lang-defvar c-stmt-boundary-skip-chars-with-comma
+  (c-lang-const c-stmt-boundary-skip-chars-with-comma))
+
+(c-lang-defconst c-stmt-boundary-skip-list-with-comma
+  ;; Variant of `c-stmt-boundary-skip-list' also including a comma.
+  t (append (substring (c-lang-const c-stmt-boundary-skip-chars-with-comma)
+		       1)
+	    nil))
+(c-lang-defvar c-stmt-boundary-skip-list-with-comma
+  (c-lang-const c-stmt-boundary-skip-list-with-comma))
 
 (c-lang-defconst c-pack-ops
   "Ops which signal C++11's \"parameter pack\""
@@ -1496,7 +1572,7 @@ Currently (2016-08) only used in C++ mode."
 
 (c-lang-defconst c-pre-lambda-tokens-re
   ;; Regexp matching any token in the list `c-pre-lambda-tokens'.
-  t (regexp-opt (c-lang-const c-pre-lambda-tokens)))
+  t (c-make-keywords-re t (c-lang-const c-pre-lambda-tokens)))
 (c-lang-defvar c-pre-lambda-tokens-re (c-lang-const c-pre-lambda-tokens-re))
 
 ;;; Syntactic whitespace.
@@ -1608,7 +1684,7 @@ backslash."
 current line, if any, or nil in those languages without block
 comments.  When a match is found, submatch 1 contains the comment
 ender."
-  t "\\(\\*/\\)\\([^*]\\|\\*+[^/]\\)*$"
+  t "\\(\\*/\\)\\([^*]\\|\\*+\\([^*/]\\|$\\)\\)*$"
   awk nil)
 (c-lang-defvar c-last-c-comment-end-on-line-re
 	       (c-lang-const c-last-c-comment-end-on-line-re))
@@ -1618,7 +1694,7 @@ ender."
 current ine, if any, or nil in those languages without block
 comments.  When a match is found, submatch 1 contains the comment
 starter."
-  t "\\(/\\*\\)\\([^*]\\|\\*+[^/]\\)*$"
+  t "\\(/\\*\\)\\([^*]\\|\\*+\\([^*/]\\|$\\)\\)*$"
   awk nil)
 (c-lang-defvar c-last-open-c-comment-start-on-line-re
 	       (c-lang-const c-last-open-c-comment-start-on-line-re))

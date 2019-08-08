@@ -1690,7 +1690,8 @@ See `add-log-current-defun-function'."
     (when (eq (char-before) ?\})
       (delete-char -1)
       (when (save-excursion
-              (skip-chars-backward " \t")
+              (let ((n (skip-chars-backward " \t")))
+                (if (< n 0) (delete-char (- n))))
               (not (bolp)))
         (insert "\n"))
       (insert "end")
@@ -1857,7 +1858,7 @@ It will be properly highlighted even when the call omits parens.")
   "Syntactic keywords for Ruby mode.  See `syntax-propertize-function'."
   (let (case-fold-search)
     (goto-char start)
-    (remove-text-properties start end '(ruby-expansion-match-data))
+    (remove-text-properties start end '(ruby-expansion-match-data nil))
     (ruby-syntax-propertize-heredoc end)
     (ruby-syntax-enclosing-percent-literal end)
     (funcall

@@ -453,6 +453,14 @@ Return the number of characters removed."
 	auth
 	(strength 0))
 
+    ;; If we're here, then we got a 40x Unauthorized response from the
+    ;; server.  If we already have "Authorization" in the extra
+    ;; headers, then this means that we've already tried sending
+    ;; credentials to the server, and they were wrong, so just give
+    ;; up.
+    (when (assoc "Authorization" url-http-extra-headers)
+      (error "Wrong authorization used for %s" url))
+
     ;; find strongest supported auth
     (dolist (this-auth auths)
       (setq this-auth (url-eat-trailing-space
@@ -951,7 +959,7 @@ should be shown to the user."
                   (start end &optional allow-partial))
 
 (defun url-handle-content-transfer-encoding ()
-  (let ((encoding (mail-fetch-field "content-encoding")))
+  (let ((encoding (mail-fetch-field "content-encoding" nil nil nil t)))
     (when (and encoding
 	       (fboundp 'zlib-available-p)
 	       (zlib-available-p)
@@ -1017,7 +1025,7 @@ should be shown to the user."
   ;; Function used when we do NOT know how long the document is going to be
   ;; Just _very_ simple 'downloaded %d' type of info.
   (url-lazy-message "Reading %s..."
-                    (file-size-human-readable (buffer-size) 'iec " ")))
+                    (funcall byte-count-to-string-function (buffer-size))))
 
 (defun url-http-content-length-after-change-function (_st nd _length)
   "Function used when we DO know how long the document is going to be.
@@ -1030,16 +1038,16 @@ the callback to be triggered."
        (url-percentage (- nd url-http-end-of-headers)
 		       url-http-content-length)
        url-http-content-type
-       (file-size-human-readable (- nd url-http-end-of-headers) 'iec " ")
-       (file-size-human-readable url-http-content-length 'iec " ")
+       (funcall byte-count-to-string-function (- nd url-http-end-of-headers))
+       (funcall byte-count-to-string-function url-http-content-length)
        (url-percentage (- nd url-http-end-of-headers)
 		       url-http-content-length))
     (url-display-percentage
      "Reading... %s of %s (%d%%)"
      (url-percentage (- nd url-http-end-of-headers)
 		     url-http-content-length)
-     (file-size-human-readable (- nd url-http-end-of-headers) 'iec " ")
-     (file-size-human-readable url-http-content-length 'iec " ")
+     (funcall byte-count-to-string-function (- nd url-http-end-of-headers))
+     (funcall byte-count-to-string-function url-http-content-length)
      (url-percentage (- nd url-http-end-of-headers)
 		     url-http-content-length)))
 

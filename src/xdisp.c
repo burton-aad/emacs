@@ -11368,7 +11368,7 @@ bool
 resize_mini_window (struct window *w, bool exact_p)
 {
   struct frame *f = XFRAME (w->frame);
-  int old_height = WINDOW_PIXEL_HEIGHT (w);
+  int old_height = WINDOW_BOX_TEXT_HEIGHT (w);
 
   eassert (MINI_WINDOW_P (w));
 
@@ -11400,7 +11400,6 @@ resize_mini_window (struct window *w, bool exact_p)
   else
     {
       struct it it;
-      int old_height = WINDOW_PIXEL_HEIGHT (w);
       int unit = FRAME_LINE_HEIGHT (f);
       int height, max_height;
       struct text_pos start;
@@ -11470,7 +11469,7 @@ resize_mini_window (struct window *w, bool exact_p)
 	set_buffer_internal (old_current_buffer);
     }
 
-  return WINDOW_PIXEL_HEIGHT (w) != old_height;
+  return WINDOW_BOX_TEXT_HEIGHT (w) != old_height;
 }
 
 
@@ -16679,9 +16678,7 @@ set_horizontal_scroll_bar (struct window *w)
 {
   int start, end, whole, portion;
 
-  if (!MINI_WINDOW_P (w)
-      || (w == XWINDOW (minibuf_window)
-	  && NILP (echo_area_buffer[0])))
+  if (!MINI_WINDOW_P (w) || EQ (w->horizontal_scroll_bar_type, Qbottom))
     {
       struct buffer *b = XBUFFER (w->contents);
       struct buffer *old_buffer = NULL;
@@ -17292,7 +17289,7 @@ redisplay_window (Lisp_Object window, bool just_this_one_p)
 	 the mouse, resulting in an unwanted mouse-movement rather
 	 than a simple mouse-click.  */
       if (!w->start_at_line_beg
-	  && NILP (do_mouse_tracking)
+	  && NILP (track_mouse)
       	  && CHARPOS (startp) > BEGV
 	  && CHARPOS (startp) > BEG + beg_unchanged
 	  && CHARPOS (startp) <= Z - end_unchanged
@@ -30263,7 +30260,7 @@ show_mouse_face (Mouse_HLInfo *hlinfo, enum draw_glyphs_face draw)
 
 #ifdef HAVE_WINDOW_SYSTEM
   /* Change the mouse cursor.  */
-  if (FRAME_WINDOW_P (f) && NILP (do_mouse_tracking))
+  if (FRAME_WINDOW_P (f) && NILP (track_mouse))
     {
 #ifndef HAVE_EXT_TOOL_BAR
       if (draw == DRAW_NORMAL_TEXT
@@ -31210,7 +31207,7 @@ define_frame_cursor1 (struct frame *f, Emacs_Cursor cursor, Lisp_Object pointer)
     return;
 
   /* Do not change cursor shape while dragging mouse.  */
-  if (EQ (do_mouse_tracking, Qdragging))
+  if (EQ (track_mouse, Qdragging) || EQ (track_mouse, Qdropping))
     return;
 
   if (!NILP (pointer))
@@ -32940,6 +32937,7 @@ be let-bound around code that needs to disable messages temporarily. */);
   /* also Qtext */
 
   DEFSYM (Qdragging, "dragging");
+  DEFSYM (Qdropping, "dropping");
 
   DEFSYM (Qinhibit_free_realized_faces, "inhibit-free-realized-faces");
 

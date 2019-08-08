@@ -981,7 +981,7 @@ command with a prefix argument (the value does not matter)."
 	  (goto-char start)
 	  ;; Now replace the current line with an entry for NEW-FILE.
 	  (dired-update-file-line new-file) nil)
-      (dired-log (concat "Failed to compress" from-file))
+      (dired-log (concat "Failed to (un)compress " from-file))
       from-file)))
 
 (defvar dired-compress-file-suffixes
@@ -1898,7 +1898,14 @@ Optional arg HOW-TO determines how to treat the target.
 			(set (make-local-variable 'minibuffer-default-add-function) nil)
 			(setq minibuffer-default defaults))
 		    (dired-mark-read-file-name
-		     (concat (if dired-one-file op1 operation) " %s to: ")
+                     (format "%s %%s %s: "
+                             (if dired-one-file op1 operation)
+                             (if (memq op-symbol '(symlink hardlink))
+                                 ;; Linking operations create links
+                                 ;; from the prompted file name; the
+                                 ;; other operations copy (etc) to the
+                                 ;; prompted file name.
+                                 "from" "to"))
 		     target-dir op-symbol arg rfn-list default))))
 	 (into-dir
           (progn
@@ -2865,8 +2872,11 @@ is part of a file name (i.e., has the text property `dired-filename')."
 ;;;###autoload
 (defun dired-do-search (regexp)
   "Search through all marked files for a match for REGEXP.
+If no files are marked, search through the file under point.
+
 Stops when a match is found.
-To continue searching for next match, use command \\[tags-loop-continue]."
+
+To continue searching for next match, use command \\[fileloop-continue]."
   (interactive "sSearch marked files (regexp): ")
   (fileloop-initialize-search
    regexp
@@ -2902,6 +2912,9 @@ with the command \\[tags-loop-continue]."
 ;;;###autoload
 (defun dired-do-find-regexp (regexp)
   "Find all matches for REGEXP in all marked files.
+
+If no files are marked, use the file under point.
+
 For any marked directory, all of its files are searched recursively.
 However, files matching `grep-find-ignored-files' and subdirectories
 matching `grep-find-ignored-directories' are skipped in the marked
@@ -2934,6 +2947,9 @@ REGEXP should use constructs supported by your local `grep' command."
 ;;;###autoload
 (defun dired-do-find-regexp-and-replace (from to)
   "Replace matches of FROM with TO, in all marked files.
+
+If no files are marked, use the file under point.
+
 For any marked directory, matches in all of its files are replaced,
 recursively.  However, files matching `grep-find-ignored-files'
 and subdirectories matching `grep-find-ignored-directories' are skipped

@@ -515,7 +515,7 @@ non-nil, the amount returned will be relative to past time worked."
       string)))
 
 (define-obsolete-function-alias 'timeclock-time-to-seconds 'float-time "26.1")
-(define-obsolete-function-alias 'timeclock-seconds-to-time 'encode-time "26.1")
+(define-obsolete-function-alias 'timeclock-seconds-to-time 'time-convert "26.1")
 
 ;; Should today-only be removed in favor of timeclock-relative? - gm
 (defsubst timeclock-when-to-leave (&optional today-only)
@@ -1139,9 +1139,9 @@ discrepancy, today's discrepancy, and the time worked today."
   "Given a time within a day, return 0:0:0 within that day.
 If optional argument TIME is non-nil, use that instead of the current time."
   (let ((decoded (decode-time time)))
-    (setcar (nthcdr 0 decoded) 0)
-    (setcar (nthcdr 1 decoded) 0)
-    (setcar (nthcdr 2 decoded) 0)
+    (setf (decoded-time-second decoded) 0)
+    (setf (decoded-time-minute decoded) 0)
+    (setf (decoded-time-hour decoded) 0)
     (encode-time decoded)))
 
 (defun timeclock-mean (l)

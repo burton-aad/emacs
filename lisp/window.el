@@ -434,7 +434,8 @@ shorter, explicitly specify the SIZE argument of that function."
 
 (defun window-min-pixel-height (&optional window)
   "Return the minimum pixel height of window WINDOW."
-  (* (max window-min-height window-safe-min-height)
+  (* (max (if (window-minibuffer-p window) 1 window-min-height)
+          window-safe-min-height)
      (frame-char-size window)))
 
 ;; This must go to C, finally (or get removed).
@@ -665,8 +666,9 @@ new window to that atomic window.  Operations like `split-window'
 or `delete-window', when applied to a constituent of an atomic
 window, are applied atomically to the root of that atomic window.
 
-ALIST is an association list of symbols and values.  The
-following symbols can be used.
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.  The following two symbols have a special meaning:
 
 `window' specifies the existing window the new window shall be
   combined with.  Use `window-atom-root' to make the new window a
@@ -675,7 +677,7 @@ following symbols can be used.
   atomic window too.  If no window is specified, the new window
   becomes a sibling of the selected window.  By default, the
   `window-atom' parameter of the existing window is set to `main'
-  provided it is live and was not set before.
+  provided the window is live and the parameter is not set yet.
 
 `side' denotes the side of the existing window where the new
   window shall be located.  Valid values are `below', `right',
@@ -683,7 +685,12 @@ following symbols can be used.
   `window-atom' parameter of the new window is set to this value.
 
 The return value is the new window, nil when creating that window
-failed."
+failed.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((ignore-window-parameters t)
 	 (window-combination-limit t)
 	 (window-combination-resize 'atom)
@@ -999,8 +1006,10 @@ and may be called only if no window on SIDE exists yet."
 
 (defun display-buffer-in-side-window (buffer alist)
   "Display BUFFER in a side window of the selected frame.
-ALIST is an association list of symbols and values.  The
-following special symbols can be used in ALIST.
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.  The following two symbols, when used in ALIST, have
+a special meaning:
 
  `side' denotes the side of the frame where the new window shall
    be located.  Valid values are `bottom', `right', `top' and
@@ -1026,7 +1035,12 @@ for displaying BUFFER, nil if no suitable window can be found.
 This function installs the `window-side' and `window-slot'
 parameters and makes them persistent.  It neither modifies ALIST
 nor installs any other window parameters unless they have been
-explicitly provided via a `window-parameters' entry in ALIST."
+explicitly provided via a `window-parameters' entry in ALIST.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((side (or (cdr (assq 'side alist)) 'bottom))
          (slot (or (cdr (assq 'slot alist)) 0))
          (left-or-right (memq side '(left right))))
@@ -1603,8 +1617,6 @@ return the minimum pixel-size of WINDOW."
 	  value)
       (with-current-buffer (window-buffer window)
 	(cond
-	 ((window-minibuffer-p window)
-	  (if pixelwise (frame-char-height (window-frame window)) 1))
 	 ((window-size-fixed-p window horizontal ignore)
 	  ;; The minimum size of a fixed size window is its size.
 	  (window-size window horizontal pixelwise))
@@ -2739,30 +2751,32 @@ windows."
   (when (window-right window)
     (window--resize-reset-1 (window-right window) horizontal)))
 
+;; The following is the internal function used when resizing mini
+;; windows "manually", for example, when dragging a divider between
+;; root and mini window.  The routines for automatic minibuffer window
+;; resizing call `window--resize-root-window-vertically' instead.
 (defun window--resize-mini-window (window delta)
-  "Resize minibuffer window WINDOW by DELTA pixels.
+  "Change height of mini window WINDOW by DELTA pixels.
 If WINDOW cannot be resized by DELTA pixels make it as large (or
 as small) as possible, but don't signal an error."
   (when (window-minibuffer-p window)
     (let* ((frame (window-frame window))
 	   (root (frame-root-window frame))
 	   (height (window-pixel-height window))
-	   (min-delta
-	    (- (window-pixel-height root)
-	       (window-min-size root nil nil t))))
-      ;; Sanitize DELTA.
-      (cond
-       ((<= (+ height delta) 0)
-	(setq delta (- (frame-char-height frame) height)))
-       ((> delta min-delta)
-	(setq delta min-delta)))
+           (min-height (+ (frame-char-height frame)
+                          (- (window-pixel-height window)
+                             (window-body-height window t))))
+           (max-delta (- (window-pixel-height root)
+	                 (window-min-size root nil nil t))))
+      ;; Don't make mini window too small.
+      (when (< (+ height delta) min-height)
+	(setq delta (- min-height height)))
+      ;; Don't make root window too small.
+      (when (> delta max-delta)
+	(setq delta max-delta))
 
       (unless (zerop delta)
-	;; Resize now.
 	(window--resize-reset frame)
-	;; Ideally we should be able to resize just the last child of root
-	;; here.  See the comment in `resize-root-window-vertically' for
-	;; why we do not do that.
 	(window--resize-this-window root (- delta) nil nil t)
 	(set-window-new-pixel window (+ height delta))
 	;; The following routine catches the case where we want to resize
@@ -5881,7 +5895,7 @@ value can be also stored on disk and read back in a new session."
 		(let ((scroll-bars (cdr (assq 'scroll-bars state))))
 		  (set-window-scroll-bars
 		   window (car scroll-bars) (nth 2 scroll-bars)
-		   (nth 3 scroll-bars) (nth 5 scroll-bars)))
+		   (nth 3 scroll-bars) (nth 5 scroll-bars) (nth 6 scroll-bars)))
 		(set-window-vscroll window (cdr (assq 'vscroll state)))
 		;; Adjust vertically.
 		(if (or (memq window-size-fixed '(t height))
@@ -6162,16 +6176,16 @@ this function must be called before BUFFER is explicitly made
 WINDOW's buffer (although WINDOW may show BUFFER already).
 
 TYPE specifies the type of the calling operation and must be one
-of the symbols 'reuse' (meaning that WINDOW exists already and
-will be used for displaying BUFFER), 'window' (WINDOW was created
-on an already existing frame) or 'frame' (WINDOW was created on a
+of the symbols `reuse' (meaning that WINDOW exists already and
+will be used for displaying BUFFER), `window' (WINDOW was created
+on an already existing frame) or `frame' (WINDOW was created on a
 new frame).
 
-This function installs or updates the 'quit-restore' parameter of
-WINDOW.  The 'quit-restore' parameter is a list of four elements:
-The first element is one of the symbols 'window', 'frame', 'same'
-or 'other'.  The second element is either one of the symbols
-'window' or 'frame' or a list whose elements are the buffer
+This function installs or updates the `quit-restore' parameter of
+WINDOW.  The `quit-restore' parameter is a list of four elements:
+The first element is one of the symbols `window', `frame', `same'
+or `other'.  The second element is either one of the symbols
+`window' or `frame' or a list whose elements are the buffer
 previously shown in the window, that buffer's window start and
 window point, and the window's height.  The third element is the
 window selected at the time the parameter was created.  The
@@ -7284,17 +7298,22 @@ The default predicate is to use any frame other than the selected
 frame.  If successful, return the window used; otherwise return
 nil.
 
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
 If ALIST has a non-nil `inhibit-switch-frame' entry, avoid
-raising the frame.
+raising the frame.  If it has a non-nil `frame-predicate' entry,
+its value is a function taking one argument (a frame), returning
+non-nil if the frame is a candidate; this function replaces the
+default predicate.  If ALIST has a non-nil `inhibit-same-window'
+entry, avoid using the currently selected window (only useful
+with a frame-predicate that allows using the selected frame).
 
-If ALIST has a non-nil `frame-predicate' entry, its value is a
-function taking one argument (a frame), returning non-nil if the
-frame is a candidate; this function replaces the default
-predicate.
-
-If ALIST has a non-nil `inhibit-same-window' entry, avoid using
-the currently selected window (only useful with a frame-predicate
-that allows the selected frame)."
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((predicate
           (or (cdr (assq 'frame-predicate alist))
               (lambda (frame)
@@ -7313,10 +7332,19 @@ that allows the selected frame)."
 
 (defun display-buffer-same-window (buffer alist)
   "Display BUFFER in the selected window.
-This fails if ALIST has an `inhibit-same-window' element whose
-value is non-nil, or if the selected window is a minibuffer
-window or is dedicated to another buffer; in that case, return nil.
-Otherwise, return the selected window."
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
+This function fails if ALIST has an `inhibit-same-window'
+element whose value is non-nil, or if the selected window is a
+minibuffer window or is dedicated to another buffer; in that case,
+return nil.  Otherwise, return the selected window.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (unless (or (cdr (assq 'inhibit-same-window alist))
 	      (window-minibuffer-p)
 	      (window-dedicated-p))
@@ -7324,6 +7352,10 @@ Otherwise, return the selected window."
 
 (defun display-buffer--maybe-same-window (buffer alist)
   "Conditionally display BUFFER in the selected window.
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
 If `same-window-p' returns non-nil for BUFFER's name, call
 `display-buffer-same-window' and return its value.  Otherwise,
 return nil."
@@ -7332,7 +7364,12 @@ return nil."
 
 (defun display-buffer-reuse-window (buffer alist)
   "Return a window that is already displaying BUFFER.
-Return nil if no usable window is found.
+Preferably use a window on the selected frame if such a window
+exists.  Return nil if no usable window is found.
+
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
 
 If ALIST has a non-nil `inhibit-same-window' entry, the selected
 window is not eligible for reuse.
@@ -7352,7 +7389,12 @@ terminal if either of those variables is non-nil.
 
 If ALIST has a non-nil `inhibit-switch-frame' entry, then in the
 event that a window on another frame is chosen, avoid raising
-that frame."
+that frame.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((alist-entry (assq 'reusable-frames alist))
 	 (frames (cond (alist-entry (cdr alist-entry))
 		       ((if (eq pop-up-frames 'graphic-only)
@@ -7364,9 +7406,21 @@ that frame."
 	 (window (if (and (eq buffer (window-buffer))
 			  (not (cdr (assq 'inhibit-same-window alist))))
 		     (selected-window)
-		   (car (delq (selected-window)
-			      (get-buffer-window-list buffer 'nomini
-						      frames))))))
+                   ;; Preferably use a window on the selected frame,
+                   ;; if such a window exists (Bug#36680).
+                   (let* ((windows (delq (selected-window)
+                                         (get-buffer-window-list
+                                          buffer 'nomini frames)))
+                          (first (car windows))
+                          (this-frame (selected-frame)))
+                     (cond
+                      ((eq (window-frame first) this-frame)
+                       first)
+                      ((catch 'found
+                         (dolist (next (cdr windows))
+                           (when (eq (window-frame next) this-frame)
+                             (throw 'found next)))))
+                      (t first))))))
     (when (window-live-p window)
       (prog1 (window--display-buffer buffer window 'reuse alist)
 	(unless (cdr (assq 'inhibit-switch-frame alist))
@@ -7377,6 +7431,10 @@ that frame."
 Display BUFFER in the returned window.  Return nil if no usable
 window is found.
 
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
 If ALIST contains a `mode' entry, its value is a major mode (a
 symbol) or a list of modes.  A window is a candidate if it
 displays a buffer that derives from one of the given modes.  When
@@ -7386,7 +7444,12 @@ is used.
 The behavior is also controlled by entries for
 `inhibit-same-window', `reusable-frames' and
 `inhibit-switch-frame' as is done in the function
-`display-buffer-reuse-window'."
+`display-buffer-reuse-window'.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((alist-entry (assq 'reusable-frames alist))
          (alist-mode-entry (assq 'mode alist))
 	 (frames (cond (alist-entry (cdr alist-entry))
@@ -7456,12 +7519,18 @@ See `display-buffer' for the format of display actions."
 This works by calling `pop-up-frame-function'.  If successful,
 return the window used; otherwise return nil.
 
-If ALIST has a non-nil `inhibit-switch-frame' entry, avoid
-raising the new frame.
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
 
-If ALIST has a non-nil `pop-up-frame-parameters' entry, the
-corresponding value is an alist of frame parameters to give the
-new frame."
+If ALIST has a non-nil `inhibit-switch-frame' entry, avoid
+raising the new frame.  A non-nil `pop-up-frame-parameters' entry
+specifies an alist of frame parameters to give the new frame.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((params (cdr (assq 'pop-up-frame-parameters alist)))
 	 (pop-up-frame-alist (append params pop-up-frame-alist))
 	 (fun pop-up-frame-function)
@@ -7482,9 +7551,18 @@ The new window is created on the selected frame, or in
 `last-nonminibuffer-frame' if no windows can be created there.
 If successful, return the new window; otherwise return nil.
 
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
 If ALIST has a non-nil `inhibit-switch-frame' entry, then in the
 event that the new window is created on another frame, avoid
-raising the frame."
+raising the frame.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let ((frame (or (window--frame-usable-p (selected-frame))
 		   (window--frame-usable-p (last-nonminibuffer-frame))))
 	window)
@@ -7507,18 +7585,25 @@ raising the frame."
 
 (defun display-buffer--maybe-pop-up-frame-or-window (buffer alist)
   "Try displaying BUFFER based on `pop-up-frames' or `pop-up-windows'.
-If `pop-up-frames' is non-nil (and not `graphic-only' on a
-text-only terminal), try with `display-buffer-pop-up-frame'.
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
 
-If that cannot be done, and `pop-up-windows' is non-nil, try
-again with `display-buffer-pop-up-window'."
+If `pop-up-frames' is non-nil (and not `graphic-only' on a
+text-only terminal), try with `display-buffer-pop-up-frame'.  If
+that cannot be done, and `pop-up-windows' is non-nil, try again
+with `display-buffer-pop-up-window'."
   (or (display-buffer--maybe-pop-up-frame buffer alist)
       (display-buffer--maybe-pop-up-window buffer alist)))
 
 (defun display-buffer--maybe-pop-up-frame (buffer alist)
   "Try displaying BUFFER based on `pop-up-frames'.
 If `pop-up-frames' is non-nil (and not `graphic-only' on a
-text-only terminal), try with `display-buffer-pop-up-frame'."
+text-only terminal), try with `display-buffer-pop-up-frame'.
+
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists."
   (and (if (eq pop-up-frames 'graphic-only)
 	   (display-graphic-p)
 	 pop-up-frames)
@@ -7536,12 +7621,21 @@ By default, this either reuses a child frame of the selected
 frame or makes a new child frame of the selected frame.  If
 successful, return the window used; otherwise return nil.
 
-If ALIST has a non-nil 'child-frame-parameters' entry, the
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
+If ALIST has a non-nil `child-frame-parameters' entry, the
 corresponding value is an alist of frame parameters to give the
-new frame.  A 'parent-frame' parameter specifying the selected
-frame is provided by default.  If the child frame should be or
+new frame.  A `parent-frame' parameter specifying the selected
+frame is provided by default.  If the child frame shall be or
 become the child of any other frame, a corresponding entry must
-be added to ALIST."
+be added to ALIST.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((parameters
           (append
            (cdr (assq 'child-frame-parameters alist))
@@ -7639,11 +7733,15 @@ ALIST is a buffer display alist."
 
 (defun display-buffer-in-direction (buffer alist)
   "Try to display BUFFER in a direction specified by ALIST.
-ALIST has to contain a 'direction' entry whose value should be
-one of 'left', 'above' (or 'up'), 'right', and 'below' (or
-'down').  Other values are usually interpreted as 'below'.
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
 
-If ALIST also contains a 'window' entry, its value specifies a
+ALIST has to contain a `direction' entry whose value should be
+one of `left', `above' (or `up'), `right' and `below' (or
+'down').  Other values are usually interpreted as `below'.
+
+If ALIST also contains a `window' entry, its value specifies a
 reference window.  That value can be a special symbol like
 'main' (which stands for the selected frame's main window) or
 'root' (standings for the selected frame's root window) or an
@@ -7653,13 +7751,18 @@ window.
 
 This function tries to reuse or split a window such that the
 window produced this way is on the side of the reference window
-specified by the 'direction' entry.
+specified by the `direction' entry.
 
-Four special values for 'direction' entries allow to implicitly
+Four special values for `direction' entries allow to implicitly
 specify the selected frame's main window as reference window:
-'leftmost', 'top', 'rightmost' and 'bottom'.  Hence, instead of
-'(direction . left) (window . main)' one can simply write
-'(direction . leftmost)'."
+`leftmost', `top', `rightmost' and `bottom'.  Hence, instead of
+`(direction . left) (window . main)' one can simply write
+`(direction . leftmost)'.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let ((direction (cdr (assq 'direction alist))))
     (when direction
       (let ((window (cdr (assq 'window alist)))
@@ -7727,11 +7830,20 @@ create a new window below the selected one and show BUFFER there.
 If that attempt fails as well and there is a non-dedicated window
 below the selected one, use that window.
 
-If ALIST contains a 'window-min-height' entry, this function
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
+If ALIST contains a `window-min-height' entry, this function
 ensures that the window used is or can become at least as high as
 specified by that entry's value.  Note that such an entry alone
 will not resize the window per se.  In order to do that, ALIST
-must also contain a 'window-height' entry with the same value."
+must also contain a `window-height' entry with the same value.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let ((min-height (cdr (assq 'window-min-height alist)))
 	window)
     (or (and (setq window (window-in-direction 'below))
@@ -7781,7 +7893,16 @@ must also contain a 'window-height' entry with the same value."
 This either reuses such a window provided it shows BUFFER
 already, splits a window at the bottom of the frame or the
 frame's root window, or reuses some window at the bottom of the
-selected frame."
+selected frame.
+
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let (bottom-window bottom-window-shows-buffer window)
     (walk-window-tree
      (lambda (window)
@@ -7805,6 +7926,10 @@ selected frame."
 
 (defun display-buffer-in-previous-window (buffer alist)
   "Display BUFFER in a window previously showing it.
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
 If ALIST has a non-nil `inhibit-same-window' entry, the selected
 window is not usable.  A dedicated window is usable only if it
 already shows BUFFER.  If ALIST contains a `previous-window'
@@ -7827,14 +7952,19 @@ terminal if either of those variables is non-nil.
 If more than one window is usable according to these rules,
 apply the following order of preference:
 
-- Use the window specified by any 'previous-window' ALIST entry,
+- Use the window specified by any `previous-window' ALIST entry,
   provided it is not the selected window.
 
 - Use a window that showed BUFFER before, provided it is not the
   selected window.
 
 - Use the selected window if it is either specified by a
-  'previous-window' ALIST entry or showed BUFFER before."
+  `previous-window' ALIST entry or showed BUFFER before.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((alist-entry (assq 'reusable-frames alist))
 	 (inhibit-same-window
 	  (cdr (assq 'inhibit-same-window alist)))
@@ -7876,9 +8006,18 @@ apply the following order of preference:
 Search for a usable window, set that window to the buffer, and
 return the window.  If no suitable window is found, return nil.
 
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
 If ALIST has a non-nil `inhibit-switch-frame' entry, then in the
-event that a window in another frame is chosen, avoid raising
-that frame."
+event that a window on another frame is chosen, avoid raising
+that frame.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (let* ((not-this-window (cdr (assq 'inhibit-same-window alist)))
 	 (frame (or (window--frame-usable-p (selected-frame))
 		    (window--frame-usable-p (last-nonminibuffer-frame))))
@@ -7916,11 +8055,20 @@ that frame."
 
 (defun display-buffer-no-window (_buffer alist)
   "Display BUFFER in no window.
-If ALIST has a non-nil `allow-no-window' entry, then don't display
-a window at all.  This makes possible to override the default action
-and avoid displaying the buffer.  It is assumed that when the caller
-specifies a non-nil `allow-no-window' then it can handle a nil value
-returned from `display-buffer' in this case."
+ALIST is an association list of action symbols and values.  See
+Info node `(elisp) Buffer Display Action Alists' for details of
+such alists.
+
+If ALIST contains a non-nil `allow-no-window' entry, do nothing
+and return `fail'.  This allows `display-buffer' to override the
+default action and avoid displaying the buffer.  It is assumed
+that when the caller specifies a non-nil `allow-no-window' ALIST
+entry, it can handle a nil value returned by `display-buffer'.
+
+This is an action function for buffer display, see Info
+node `(elisp) Buffer Display Action Functions'.  It should be
+called only by `display-buffer' or a function directly or
+indirectly called by the latter."
   (when (cdr (assq 'allow-no-window alist))
     'fail))
 
@@ -8484,7 +8632,7 @@ parameters of FRAME."
             (if parent
                 (frame-native-height parent)
               (- (nth 3 geometry) (nth 1 geometry))))
-           ;; FRAME'S parent or workarea sizes.  Used when no margins
+           ;; FRAME's parent or workarea sizes.  Used when no margins
            ;; are specified.
            (parent-or-workarea
             (if parent
@@ -8671,7 +8819,7 @@ and defaults to `window-min-width'.  Both MAX-WIDTH and MIN-WIDTH
 are specified in columns and include fringes, margins, a
 scrollbar and a vertical divider, if any.
 
-If the optional argument `preserve-size' is non-nil, preserve the
+Optional argument PRESERVE-SIZE non-nil means to preserve the
 size of WINDOW (see `window-preserve-size').
 
 Fit pixelwise if the option `window-resize-pixelwise' is non-nil.

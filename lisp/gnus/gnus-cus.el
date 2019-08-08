@@ -254,7 +254,10 @@ DOC is a documentation string for the parameter.")
 (defconst gnus-extra-group-parameters
   '((uidvalidity (string :tag "IMAP uidvalidity") "\
 Server-assigned value attached to IMAP groups, used to maintain consistency.")
-    (modseq (string :tag "modseq") "modseq")
+    (modseq (choice :tag "modseq"
+		    (const :tag "None" nil)
+		    (string :tag "Sequence number"))
+	    "Modification seqence number")
     (active (cons :tag "active" (integer :tag "min") (integer :tag "max"))
 	    "active")
     (permanent-flags (repeat :tag "Permanent Flags" (symbol :tag "Flag"))
@@ -393,7 +396,7 @@ category."))
 		     :tag  "topic parameters"
 		     "(gnus)Topic Parameters"))
     (widget-insert " for <")
-    (widget-insert (gnus-group-decoded-name (or group topic)))
+    (widget-insert (or group topic))
     (widget-insert "> and press ")
     (widget-create 'push-button
 		   :tag "done"
@@ -842,8 +845,7 @@ When called interactively, FILE defaults to the current score file.
 This can be changed using the `\\[gnus-score-change-score-file]' command."
   (interactive (list gnus-current-score-file))
   (unless file
-    (error "No score file for %s"
-           (gnus-group-decoded-name gnus-newsgroup-name)))
+    (error "No score file for %s" gnus-newsgroup-name))
   (let ((scores (gnus-score-load file))
 	(types (mapcar (lambda (entry)
 			 `(group :format "%v%h\n"

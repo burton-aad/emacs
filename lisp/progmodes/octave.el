@@ -289,6 +289,7 @@ Non-nil means always go to the next Octave code line after sending."
         ("methods" exp "endmethods")
         ("properties" exp "endproperties")
         ("classdef" exp "endclassdef")
+        ("spmd" exp "endspmd")
         ))
 
      (bnf-table
@@ -1631,12 +1632,7 @@ code line."
            (paren-pos (cadr ppss))
            (fn (save-excursion
                  (if (and paren-pos
-                          ;; PAREN-POS must be after the prompt
-                          (>= paren-pos
-                              (if (eq (get-buffer-process (current-buffer))
-                                      inferior-octave-process)
-                                  (process-mark inferior-octave-process)
-                                (point-min)))
+                          ;; PAREN-POS must be after the prompt.
                           (or (not (eq (get-buffer-process (current-buffer))
                                        inferior-octave-process))
                               (< (process-mark inferior-octave-process)

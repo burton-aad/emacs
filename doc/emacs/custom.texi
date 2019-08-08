@@ -1563,7 +1563,8 @@ self-inserting because the global keymap binds it to the command
 such as @kbd{C-a} also get their standard meanings from the global
 keymap.  Commands to rebind keys, such as @kbd{M-x global-set-key},
 work by storing the new binding in the proper place in the global map
-(@pxref{Rebinding}).
+(@pxref{Rebinding}).  To view the current key bindings, use the
+@kbd{C-h b} command.
 
 @cindex function key
   Most modern keyboards have function keys as well as character keys.
@@ -1697,7 +1698,7 @@ They do not bind @key{SPC}.
 @node Rebinding
 @subsection Changing Key Bindings Interactively
 @cindex key rebinding, this session
-@cindex redefining keys, this session
+@cindex rebinding keys, this session
 @cindex binding keys
 
   The way to redefine an Emacs key is to change its entry in a keymap.
@@ -2616,8 +2617,7 @@ kept.
 
   The usual purpose of the terminal-specific library is to map the
 escape sequences used by the terminal's function keys onto more
-meaningful names, using @code{input-decode-map} (or
-@code{function-key-map} before it).  See the file
+meaningful names, using @code{input-decode-map}.  See the file
 @file{term/lk201.el} for an example of how this is done.  Many function
 keys are mapped automatically according to the information in the
 Termcap data base; the terminal-specific library needs to map only the

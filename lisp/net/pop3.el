@@ -35,7 +35,6 @@
 (eval-when-compile (require 'cl-lib))
 
 (require 'mail-utils)
-(defvar parse-time-months)
 
 (defgroup pop3 nil
   "Post Office Protocol."
@@ -380,7 +379,7 @@ Use streaming commands."
 (defun pop3-uidl-dele (process)
   "Delete messages according to `pop3-leave-mail-on-server'.
 Return non-nil if it is necessary to update the local UIDL file."
-  (let* ((ctime (encode-time nil 'list))
+  (let* ((ctime (time-convert nil 'list))
 	 (age-limit (and (numberp pop3-leave-mail-on-server)
 			 (* 86400 pop3-leave-mail-on-server)))
 	 (srvr (assoc pop3-mailhost pop3-uidl-saved))
@@ -609,18 +608,9 @@ Return the response string if optional second argument is non-nil."
 (defun pop3-make-date (&optional now)
   "Make a valid date header.
 If NOW, use that time instead."
-  (require 'parse-time)
-  (let* ((now (or now (current-time)))
-	 (zone (nth 8 (decode-time now))))
-    (when (< zone 0)
-      (setq zone (- zone)))
-    (concat
-     (format-time-string "%d" now)
-     ;; The month name of the %b spec is locale-specific.  Pfff.
-     (format " %s "
-	     (capitalize (car (rassoc (nth 4 (decode-time now))
-				      parse-time-months))))
-     (format-time-string "%Y %H:%M:%S %z" now))))
+  ;; The month name of the %b spec is locale-specific.  Pfff.
+  (let ((system-time-locale "C"))
+    (format-time-string "%d %b %Y %T %z" now)))
 
 (defun pop3-munge-message-separator (start end)
   "Check to see if a message separator exists.  If not, generate one."

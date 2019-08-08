@@ -650,7 +650,7 @@ is searched."
 (defun gnus-icalendar-show-org-agenda (event)
   (let* ((time-delta (time-subtract (gnus-icalendar-event:end-time event)
                                     (gnus-icalendar-event:start-time event)))
-         (duration-days (1+ (floor (encode-time time-delta 'integer) 86400))))
+         (duration-days (1+ (floor (time-convert time-delta 'integer) 86400))))
     (org-agenda-list nil (gnus-icalendar-event:start event) duration-days)))
 
 (cl-defmethod gnus-icalendar-event:sync-to-org ((event gnus-icalendar-event-request) reply-status)
@@ -777,9 +777,8 @@ These will be used to retrieve the RSVP information from ical events."
        ,callback
        keymap ,gnus-mime-button-map
        face ,gnus-article-button-face
-       gnus-data ,data))
-    (widget-convert-button 'link start (point)
-                           :action 'gnus-widget-press-button)))
+       button t
+       gnus-data ,data))))
 
 (defun gnus-icalendar-send-buffer-by-mail (buffer-name subject)
   (let ((message-signature nil))

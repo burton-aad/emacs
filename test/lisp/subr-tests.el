@@ -125,6 +125,13 @@
   (should (equal (macroexpand-all '(when a b c d))
                  '(if a (progn b c d)))))
 
+(ert-deftest subr-test-xor ()
+  "Test `xor'."
+  (should-not (xor nil nil))
+  (should (eq (xor nil 'true) 'true))
+  (should (eq (xor 'true nil) 'true))
+  (should-not (xor t t)))
+
 (ert-deftest subr-test-version-parsing ()
   (should (equal (version-to-list ".5") '(0 5)))
   (should (equal (version-to-list "0.9 alpha1") '(0 9 -3 1)))
@@ -399,6 +406,16 @@ See https://debbugs.gnu.org/cgi/bugreport.cgi?bug=19350."
   (add-hook 'subr-tests--hook 'f10)
   (should (equal subr-tests--hook '(f5 f10 f9 f6 f2 f1 f4 f3 f7 f8)))
   )
+
+(ert-deftest ignore-error-tests ()
+  (should (equal (ignore-error (end-of-file)
+                   (read ""))
+                 nil))
+  (should (equal (ignore-error end-of-file
+                   (read ""))
+                 nil))
+  (should-error (ignore-error foo
+                  (read ""))))
 
 (provide 'subr-tests)
 ;;; subr-tests.el ends here

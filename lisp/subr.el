@@ -209,6 +209,14 @@ value of last one, or nil if there are none.
   (declare (indent 1) (debug t))
   (cons 'if (cons cond (cons nil body))))
 
+(defsubst xor (cond1 cond2)
+  "Return the boolean exclusive-or of COND1 and COND2.
+If only one of the arguments is non-nil, return it; otherwise
+return nil."
+  (declare (pure t) (side-effect-free error-free))
+  (cond ((not cond1) cond2)
+        ((not cond2) cond1)))
+
 (defmacro dolist (spec &rest body)
   "Loop over a list.
 Evaluate BODY with VAR bound to each car from LIST, in turn.
@@ -302,6 +310,14 @@ See also `with-demoted-errors' that does something similar
 without silencing all errors."
   (declare (debug t) (indent 0))
   `(condition-case nil (progn ,@body) (error nil)))
+
+(defmacro ignore-error (condition &rest body)
+  "Execute BODY; if the error CONDITION occurs, return nil.
+Otherwise, return result of last form in BODY.
+
+CONDITION can also be a list of error conditions."
+  (declare (debug t) (indent 1))
+  `(condition-case nil (progn ,@body) (,condition nil)))
 
 ;;;; Basic Lisp functions.
 
@@ -679,16 +695,13 @@ of course, also replace TO with a slightly larger value
       (list from)
     (or inc (setq inc 1))
     (when (zerop inc) (error "The increment can not be zero"))
-    (let (seq (n 0) (next from) (last from))
+    (let (seq (n 0) (next from))
       (if (> inc 0)
-          ;; The (>= next last) condition protects against integer
-          ;; overflow in computing NEXT.
-          (while (and (>= next last) (<= next to))
+          (while (<= next to)
             (setq seq (cons next seq)
                   n (1+ n)
-                  last next
                   next (+ from (* n inc))))
-        (while (and (<= next last) (>= next to))
+        (while (>= next to)
           (setq seq (cons next seq)
                 n (1+ n)
                 next (+ from (* n inc)))))
@@ -4448,7 +4461,7 @@ This function is called directly from the C code."
            (package (intern (substring file 0
 			               (string-match "\\.elc?\\>" file))
                             obarray))
-	   (msg (format "Package %s is obsolete" package)))
+	   (msg (format "Package %s is deprecated" package)))
       ;; Cribbed from cl--compiling-file.
       (when (or (not (fboundp 'byte-compile-warning-enabled-p))
                 (byte-compile-warning-enabled-p 'obsolete package))

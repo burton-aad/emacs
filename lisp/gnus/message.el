@@ -666,30 +666,29 @@ variable should be a regexp or a list of regexps."
 
 (defun message-send-mail-function ()
   "Return suitable value for the variable `message-send-mail-function'."
-  (cond ((and (require 'sendmail)
-	      (boundp 'sendmail-program)
-	      sendmail-program
-	      (executable-find sendmail-program))
-	 'message-send-mail-with-sendmail)
-	((and (locate-library "smtpmail")
-	      (boundp 'smtpmail-default-smtp-server)
-	      smtpmail-default-smtp-server)
-	 'message-smtpmail-send-it)
-	((locate-library "mailclient")
-	 'message-send-mail-with-mailclient)
+  (declare (obsolete nil "27.1"))
+  (require 'sendmail)
+  (defvar sendmail-program)
+  (cond ((executable-find sendmail-program)
+	 #'message-send-mail-with-sendmail)
+	((bound-and-true-p 'smtpmail-default-smtp-server)
+	 #'message-smtpmail-send-it)
 	(t
-	 (error "Don't know how to send mail.  Please customize `message-send-mail-function'"))))
+	 #'message-send-mail-with-mailclient)))
 
 (defun message-default-send-mail-function ()
-  (cond ((eq send-mail-function 'smtpmail-send-it) 'message-smtpmail-send-it)
-	((eq send-mail-function 'feedmail-send-it) 'feedmail-send-it)
-	((eq send-mail-function 'sendmail-query-once) 'sendmail-query-once)
-	((eq send-mail-function 'mailclient-send-it)
-	 'message-send-mail-with-mailclient)
-	(t (message-send-mail-function))))
+  (cond ((eq send-mail-function #'feedmail-send-it) #'feedmail-send-it)
+	((eq send-mail-function #'sendmail-query-once) #'sendmail-query-once)
+        ((eq send-mail-function #'sendmail-send-it)
+         #'message-send-mail-with-sendmail)
+	(t #'message-use-send-mail-function)))
+
+(defun message--default-send-mail-function ()
+  "Use the setting of `send-mail-function' if applicable."
+  (funcall (message-default-send-mail-function)))
 
 ;; Useful to set in site-init.el
-(defcustom message-send-mail-function (message-default-send-mail-function)
+(defcustom message-send-mail-function #'message--default-send-mail-function
   "Function to call to send the current buffer as mail.
 The headers should be delimited by a line whose contents match the
 variable `mail-header-separator'.
@@ -702,7 +701,9 @@ default is system dependent and determined by the function
 `message-send-mail-function'.
 
 See also `send-mail-function'."
-  :type '(radio (function-item message-send-mail-with-sendmail)
+  :type '(radio (function-item message--default-send-mail-function
+		               :tag "Use send-mail-function")
+		(function-item message-send-mail-with-sendmail)
 		(function-item message-send-mail-with-mh)
 		(function-item message-send-mail-with-qmail)
 		(function-item message-smtpmail-send-it)
@@ -712,8 +713,8 @@ See also `send-mail-function'."
 			       :tag "Use Mailclient package")
  		(function :tag "Other"))
   :group 'message-sending
-  :version "23.2"
-  :initialize 'custom-initialize-default
+  :version "27.1"
+  :initialize #'custom-initialize-default
   :link '(custom-manual "(message)Mail Variables")
   :group 'message-mail)
 
@@ -834,7 +835,10 @@ symbol `never', the posting is not allowed.  If it is the symbol
 		 (const never)
 		 (const ask)))
 
-(defcustom message-sendmail-f-is-evil nil
+(defcustom message-sendmail-f-is-evil
+  ;; FIXME: This is related to `mail-specify-envelope-from' but works
+  ;; differently (bug#36937).
+  nil
   "Non-nil means don't add \"-f username\" to the sendmail command line.
 Doing so would be even more evil than leaving it out."
   :group 'message-sending
@@ -1889,7 +1893,6 @@ You must have the \"hashcash\" binary installed, see `hashcash-path'."
 (autoload 'gnus-delay-article "gnus-delay")
 (autoload 'gnus-extract-address-components "gnus-util")
 (autoload 'gnus-find-method-for-group "gnus")
-(autoload 'gnus-group-decoded-name "gnus-group")
 (autoload 'gnus-group-name-charset "gnus-group")
 (autoload 'gnus-group-name-decode "gnus-group")
 (autoload 'gnus-groups-from-server "gnus")
@@ -1920,10 +1923,10 @@ You must have the \"hashcash\" binary installed, see `hashcash-path'."
   "Ask QUESTION, displaying remaining args in a temporary buffer if SHOW."
   `(message-talkative-question 'y-or-n-p ,question ,show ,@text))
 
-(defmacro message-delete-line (&optional n)
+(defsubst message-delete-line (&optional n)
   "Delete the current line (and the next N lines)."
-  `(delete-region (progn (beginning-of-line) (point))
-		  (progn (forward-line ,(or n 1)) (point))))
+  (delete-region (progn (beginning-of-line) (point))
+		 (progn (forward-line (or n 1)) (point))))
 
 (defun message-mark-active-p ()
   "Non-nil means the mark and region are currently active in this buffer."
@@ -2039,12 +2042,10 @@ see `message-narrow-to-headers-or-head'."
 
 (defmacro message-with-reply-buffer (&rest forms)
   "Evaluate FORMS in the reply buffer, if it exists."
+  (declare (indent 0) (debug t))
   `(when (buffer-live-p message-reply-buffer)
      (with-current-buffer message-reply-buffer
        ,@forms)))
-
-(put 'message-with-reply-buffer 'lisp-indent-function 0)
-(put 'message-with-reply-buffer 'edebug-form-spec '(body))
 
 (defun message-fetch-reply-field (header)
   "Fetch field HEADER from the message we're replying to."
@@ -4174,12 +4175,10 @@ It should typically alter the sending method in some way or other."
 
 (defmacro message-check (type &rest forms)
   "Eval FORMS if TYPE is to be checked."
+  (declare (indent 1) (debug t))
   `(or (message-check-element ,type)
        (save-excursion
 	 ,@forms)))
-
-(put 'message-check 'lisp-indent-function 1)
-(put 'message-check 'edebug-form-spec '(form body))
 
 (defun message-text-with-property (prop &optional start end reverse)
   "Return a list of start and end positions where the text has PROP.
@@ -4818,24 +4817,25 @@ to find out how to use this."
     ;; Pass it on to mh.
     (mh-send-letter)))
 
+(defun message-use-send-mail-function ()
+  (run-hooks 'message-send-mail-hook)
+  (funcall send-mail-function))
+
 (defun message-smtpmail-send-it ()
   "Send the prepared message buffer with `smtpmail-send-it'.
 The only difference from `smtpmail-send-it' is that this command
 evaluates `message-send-mail-hook' just before sending a message.
 It is useful if your ISP requires the POP-before-SMTP
 authentication.  See the Gnus manual for details."
+  (declare (obsolete message-use-send-mail-function "27.1"))
   (run-hooks 'message-send-mail-hook)
-  ;; Change header-delimiter to be what smtpmail expects.
-  (goto-char (point-min))
-  (when (re-search-forward
-	 (concat "^" (regexp-quote mail-header-separator) "\n"))
-    (replace-match "\n"))
   (smtpmail-send-it))
 
 (defun message-send-mail-with-mailclient ()
   "Send the prepared message buffer with `mailclient-send-it'.
 The only difference from `mailclient-send-it' is that this
 command evaluates `message-send-mail-hook' just before sending a message."
+  (declare (obsolete message-use-send-mail-function "27.1"))
   (run-hooks 'message-send-mail-hook)
   (mailclient-send-it))
 
@@ -5325,7 +5325,7 @@ Otherwise, generate and save a value for `canlock-password' first."
    (message-check 'new-text
      (or
       (not message-checksum)
-      (not (eq (message-checksum) message-checksum))
+      (not (equal (message-checksum) message-checksum))
       (if (message-gnksa-enable-p 'quoted-text-only)
 	  (y-or-n-p
 	   "It looks like no new text has been added.  Really post? ")
@@ -5509,8 +5509,8 @@ If NOW, use that time instead."
 
 In posting styles use `(\"Expires\" (make-expires-date 30))'."
   (let* ((cur (decode-time))
-	 (nday (+ days (nth 3 cur))))
-    (setf (nth 3 cur) nday)
+	 (nday (+ days (decoded-time-day cur))))
+    (setf (decoded-time-day cur) nday)
     (message-make-date (encode-time cur))))
 
 (defun message-make-message-id ()
@@ -5626,7 +5626,7 @@ In posting styles use `(\"Expires\" (make-expires-date 30))'."
 	  (concat
 	   msg-id (if msg-id " (")
 	   (if (car name)
-	       (if (string-match "[^\000-\177]" (car name))
+	       (if (string-match "[^[:ascii:]]" (car name))
 		   ;; Quote a string containing non-ASCII characters.
 		   ;; It will make the RFC2047 encoder cause an error
 		   ;; if there are special characters.
@@ -7283,12 +7283,11 @@ news, Source is the list of newsgroups is was posted to."
   (let* ((group (message-fetch-field "newsgroups"))
 	 (from (message-fetch-field "from"))
 	 (prefix
-	  (if group
-	      (gnus-group-decoded-name group)
-	    (or (and from (or
-			   (car (gnus-extract-address-components from))
-			   (cadr (gnus-extract-address-components from))))
-		"(nowhere)"))))
+	  (or group
+	      (or (and from (or
+			     (car (gnus-extract-address-components from))
+			     (cadr (gnus-extract-address-components from))))
+		  "(nowhere)"))))
     (concat "["
 	    (if message-forward-decoded-p
 		prefix
@@ -7302,10 +7301,9 @@ Source is the sender, and if the original message was news, Source is
 the list of newsgroups is was posted to."
   (let* ((group (message-fetch-field "newsgroups"))
 	 (prefix
-	  (if group
-	      (gnus-group-decoded-name group)
-	    (or (message-fetch-field "from")
-		"(nowhere)"))))
+	  (or group
+	      (or (message-fetch-field "from")
+		  "(nowhere)"))))
     (concat "["
 	    (if message-forward-decoded-p
 		prefix
@@ -7815,8 +7813,8 @@ Pre-defined symbols include `message-tool-bar-gnome' and
 		 (repeat :tag "User defined list" gmm-tool-bar-item)
 		 (symbol))
   :version "23.1" ;; No Gnus
-  :initialize 'custom-initialize-default
-  :set 'message-tool-bar-update
+  :initialize #'custom-initialize-default
+  :set #'message-tool-bar-update
   :group 'message)
 
 (defcustom message-tool-bar-gnome
@@ -7840,8 +7838,8 @@ Pre-defined symbols include `message-tool-bar-gnome' and
 See `gmm-tool-bar-from-list' for details on the format of the list."
   :type '(repeat gmm-tool-bar-item)
   :version "23.1" ;; No Gnus
-  :initialize 'custom-initialize-default
-  :set 'message-tool-bar-update
+  :initialize #'custom-initialize-default
+  :set #'message-tool-bar-update
   :group 'message)
 
 (defcustom message-tool-bar-retro
@@ -7860,8 +7858,8 @@ See `gmm-tool-bar-from-list' for details on the format of the list."
 See `gmm-tool-bar-from-list' for details on the format of the list."
   :type '(repeat gmm-tool-bar-item)
   :version "23.1" ;; No Gnus
-  :initialize 'custom-initialize-default
-  :set 'message-tool-bar-update
+  :initialize #'custom-initialize-default
+  :set #'message-tool-bar-update
   :group 'message)
 
 (defcustom message-tool-bar-zap-list
@@ -7873,8 +7871,8 @@ These items are not displayed on the message mode tool bar.
 See `gmm-tool-bar-from-list' for the format of the list."
   :type 'gmm-tool-bar-zap-list
   :version "23.1" ;; No Gnus
-  :initialize 'custom-initialize-default
-  :set 'message-tool-bar-update
+  :initialize #'custom-initialize-default
+  :set #'message-tool-bar-update
   :group 'message)
 
 (defvar image-load-path)
