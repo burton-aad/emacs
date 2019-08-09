@@ -1712,7 +1712,7 @@ w32_draw_box_rect (struct glyph_string *s,
 static void
 w32_draw_glyph_string_box (struct glyph_string *s)
 {
-  int width, left_x, right_x, top_y, bottom_y, last_x;
+  int hwidth, vwidth, left_x, right_x, top_y, bottom_y, last_x;
   bool left_p, right_p, raised_p;
   struct glyph *last_glyph;
   RECT clip_rect;
@@ -1726,7 +1726,8 @@ w32_draw_glyph_string_box (struct glyph_string *s)
 		? s->first_glyph
 		: s->first_glyph + s->nchars - 1);
 
-  width = eabs (s->face->box_vertical_line_width);
+  vwidth = eabs (s->face->box_vertical_line_width);
+  hwidth = eabs (s->face->box_horizontal_line_width);
   raised_p = s->face->box == FACE_RAISED_BOX;
   left_x = s->x;
   right_x = ((s->row->full_width_p && s->extends_to_end_of_line_p
@@ -1747,14 +1748,13 @@ w32_draw_glyph_string_box (struct glyph_string *s)
   get_glyph_string_clip_rect (s, &clip_rect);
 
   if (s->face->box == FACE_SIMPLE_BOX)
-    w32_draw_box_rect (s, left_x, top_y, right_x, bottom_y, eabs (s->face->box_horizontal_line_width),
-                       width, left_p, right_p, &clip_rect);
+    w32_draw_box_rect (s, left_x, top_y, right_x, bottom_y, hwidth,
+                       vwidth, left_p, right_p, &clip_rect);
   else
     {
       w32_setup_relief_colors (s);
-      w32_draw_relief_rect (s->f, left_x, top_y, right_x, bottom_y,
-                            eabs (s->face->box_horizontal_line_width),
-                            width, raised_p, 1, 1, left_p, right_p, &clip_rect);
+      w32_draw_relief_rect (s->f, left_x, top_y, right_x, bottom_y, hwidth,
+                            vwidth, raised_p, 1, 1, left_p, right_p, &clip_rect);
     }
 }
 

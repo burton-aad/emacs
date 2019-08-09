@@ -5680,10 +5680,8 @@ realize_gui_face (struct face_cache *cache, Lisp_Object attrs[LFACE_VECTOR_SIZE]
 
 	  if (EQ (keyword, QCline_width))
 	    {
-	      if (CONSP (value)) {
-		if (FIXNUMP (XCAR (value)))
+	      if (CONSP (value) && FIXNUMP (XCAR (value)) && FIXNUMP (XCDR (value))) {
 		  face->box_vertical_line_width = XFIXNUM (XCAR (value));
-		if (FIXNUMP (XCDR (value)))
 		  face->box_horizontal_line_width = XFIXNUM (XCDR (value));
 	      }
 	      else if (FIXNUMP (value) && XFIXNUM (value) != 0) {

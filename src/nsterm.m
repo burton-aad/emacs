@@ -3530,7 +3530,7 @@ ns_draw_text_decoration (struct glyph_string *s, struct face *face,
 }
 
 static void
-ns_draw_box (NSRect r, CGFloat vthickness, CGFloat hthickness,
+ns_draw_box (NSRect r, CGFloat hthickness, CGFloat vthickness,
              NSColor *col, char left_p, char right_p)
 /* --------------------------------------------------------------------------
     Draw an unfilled rect inside r, optionally leaving left and/or right open.
@@ -3563,7 +3563,7 @@ ns_draw_box (NSRect r, CGFloat vthickness, CGFloat hthickness,
 
 
 static void
-ns_draw_relief (NSRect r, int vthickness, int hthickness, char raised_p,
+ns_draw_relief (NSRect r, int hthickness, int vthickness, char raised_p,
                char top_p, char bottom_p, char left_p, char right_p,
                struct glyph_string *s)
 /* --------------------------------------------------------------------------
@@ -3649,7 +3649,7 @@ ns_dumpglyphs_box_or_relief (struct glyph_string *s)
   char left_p, right_p;
   struct glyph *last_glyph;
   NSRect r;
-  int thickness;
+  int hthickness, vthickness;
   struct face *face;
 
   if (s->hl == DRAW_MOUSE_FACE)
@@ -3662,7 +3662,8 @@ ns_dumpglyphs_box_or_relief (struct glyph_string *s)
   else
     face = s->face;
 
-  thickness = face->box_vertical_line_width;
+  vthickness = face->box_vertical_line_width;
+  hthickness = face->box_horizontal_line_width;
 
   NSTRACE ("ns_dumpglyphs_box_or_relief");
 
@@ -3687,15 +3688,15 @@ ns_dumpglyphs_box_or_relief (struct glyph_string *s)
   /* TODO: Sometimes box_color is 0 and this seems wrong; should investigate.  */
   if (s->face->box == FACE_SIMPLE_BOX && s->face->box_color)
     {
-      ns_draw_box (r, abs (thickness), abs (face->box_horizontal_line_width),
+      ns_draw_box (r, abs (hthickness), abs (vthickness),
                    ns_lookup_indexed_color (face->box_color, s->f),
                    left_p, right_p);
     }
   else
     {
-      ns_draw_relief (r, abs (thickness), abs (face->box_horizontal_line_width),
-		      s->face->box == FACE_RAISED_BOX,
-		      1, 1, left_p, right_p, s);
+      ns_draw_relief (r, abs (hthickness), abs (vthickness),
+                      s->face->box == FACE_RAISED_BOX,
+                      1, 1, left_p, right_p, s);
     }
 }
 
