@@ -34,6 +34,8 @@
 
 (test_image_relief)
 
+(custom-set-faces  '(region ((t (:inherit nil :box "red")))))
+
 (custom-set-faces  '(iedit-occurrence ((t (:inherit nil :box -1)))))
 (custom-set-faces  '(iedit-occurrence ((t (:inherit nil :box 1)))))
 (custom-set-faces  '(iedit-occurrence ((t (:inherit nil :box t)))))
